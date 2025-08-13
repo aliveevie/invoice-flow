@@ -29,4 +29,17 @@ export const TOKEN_MESSENGER_DEPOSIT_FOR_BURN_ABI = [
   },
 ];
 
+export const MESSAGE_TRANSMITTER_RECEIVE_MESSAGE_ABI = [
+  {
+    type: "function",
+    name: "receiveMessage",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "message", type: "bytes" },
+      { name: "attestation", type: "bytes" },
+    ],
+    outputs: [],
+  },
+];
+
 
