@@ -1,5 +1,6 @@
-import { createWalletClient, http, encodeFunctionData, createPublicClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { encodeFunctionData } from "viem";
+import { createWallet, createPublic, buildTransport, getAccount } from "../utils/viem.js";
+import { ERC20_APPROVE_ABI } from "../constants/abi.js";
 
 export async function approveToken({
   tokenAddress,
@@ -18,21 +19,8 @@ export async function approveToken({
   if (!spenderAddress) throw new Error("spenderAddress is required");
   if (amount === undefined || amount === null) throw new Error("amount is required");
 
-  const approveAbi = [
-    {
-      type: "function",
-      name: "approve",
-      stateMutability: "nonpayable",
-      inputs: [
-        { name: "spender", type: "address" },
-        { name: "amount", type: "uint256" },
-      ],
-      outputs: [{ name: "", type: "bool" }],
-    },
-  ];
-
   const data = encodeFunctionData({
-    abi: approveAbi,
+    abi: ERC20_APPROVE_ABI,
     functionName: "approve",
     args: [
       spenderAddress,
@@ -49,9 +37,9 @@ export async function approveToken({
   if (walletClient) {
     const hash = await walletClient.sendTransaction({ to: tokenAddress, data });
     if (waitForReceipt) {
-      const publicClient = createPublicClient({
+      const publicClient = createPublic({
         chain: walletClient.chain ?? chain,
-        transport: rpcUrl ? http(rpcUrl) : http(),
+        rpcUrl,
       });
       await publicClient.waitForTransactionReceipt({ hash });
     }
@@ -61,13 +49,10 @@ export async function approveToken({
   // If privateKey is provided, send from server using provided chain/rpcUrl
   if (privateKey) {
     if (!chain) throw new Error("chain is required when using privateKey");
-    const normalizedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-    const account = privateKeyToAccount(normalizedPrivateKey);
-    const transport = rpcUrl ? http(rpcUrl) : http();
-    const serverWallet = createWalletClient({ chain, transport, account });
+    const serverWallet = createWallet({ chain, rpcUrl, privateKey });
     const hash = await serverWallet.sendTransaction({ to: tokenAddress, data });
     if (waitForReceipt) {
-      const publicClient = createPublicClient({ chain, transport });
+      const publicClient = createPublic({ chain, rpcUrl });
       await publicClient.waitForTransactionReceipt({ hash });
     }
     return { hash, to: tokenAddress, data };
