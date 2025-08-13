@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,11 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { CalendarIcon, Plus, X } from 'lucide-react';
+import { CalendarIcon, Plus, X, Loader2, Send, Save } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 const createInvoiceSchema = z.object({
   customerEmail: z.string().email('Invalid email address'),
@@ -34,6 +36,9 @@ type CreateInvoiceForm = z.infer<typeof createInvoiceSchema>;
 
 export function CreateInvoiceForm() {
   const [currentTag, setCurrentTag] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
   
   const form = useForm<CreateInvoiceForm>({
     resolver: zodResolver(createInvoiceSchema),
@@ -73,9 +78,79 @@ export function CreateInvoiceForm() {
     form.setValue('tags', watchedTags.filter(t => t !== tag));
   };
 
-  const onSubmit = (data: CreateInvoiceForm) => {
-    console.log('Creating invoice:', data);
-    // Here you would integrate with your backend API
+  const onSubmit = async (data: CreateInvoiceForm) => {
+    setIsLoading(true);
+    
+    try {
+      // Generate a mock invoice ID
+      const invoiceId = `INV-${Date.now().toString().slice(-6)}`;
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Simulate random success/failure for demo
+      const success = Math.random() > 0.1; // 90% success rate
+      
+      if (!success) {
+        throw new Error('Failed to create invoice. Please try again.');
+      }
+
+      const invoiceData = {
+        id: invoiceId,
+        ...data,
+        subtotal: subtotal,
+        createdAt: new Date().toISOString(),
+        status: 'issued',
+      };
+
+      console.log('Invoice created successfully:', invoiceData);
+
+      toast({
+        title: "Invoice Created Successfully! 🎉",
+        description: `Invoice ${invoiceId} has been created and sent to ${data.customerEmail}`,
+        duration: 5000,
+      });
+
+      // Navigate back to invoices list
+      navigate('/invoices');
+      
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      
+      toast({
+        title: "Failed to Create Invoice",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    setIsLoading(true);
+    
+    try {
+      const invoiceId = `DRAFT-${Date.now().toString().slice(-6)}`;
+      
+      // Simulate API call for saving draft
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      toast({
+        title: "Draft Saved",
+        description: `Invoice draft ${invoiceId} has been saved successfully.`,
+      });
+      
+    } catch (error) {
+      toast({
+        title: "Failed to Save Draft",
+        description: "Unable to save draft. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -100,7 +175,11 @@ export function CreateInvoiceForm() {
                     <FormItem>
                       <FormLabel>Email *</FormLabel>
                       <FormControl>
-                        <Input placeholder="customer@example.com" {...field} />
+                        <Input 
+                          placeholder="customer@example.com" 
+                          disabled={isLoading}
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -113,7 +192,11 @@ export function CreateInvoiceForm() {
                     <FormItem>
                       <FormLabel>Customer Name *</FormLabel>
                       <FormControl>
-                        <Input placeholder="Acme Corp" {...field} />
+                        <Input 
+                          placeholder="Acme Corp" 
+                          disabled={isLoading}
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -134,7 +217,7 @@ export function CreateInvoiceForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Currency Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
@@ -157,7 +240,7 @@ export function CreateInvoiceForm() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Fiat Currency</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select currency" />
@@ -186,6 +269,7 @@ export function CreateInvoiceForm() {
                           <FormControl>
                             <Button
                               variant="outline"
+                              disabled={isLoading}
                               className={cn(
                                 "w-full pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground"
@@ -205,7 +289,7 @@ export function CreateInvoiceForm() {
                             mode="single"
                             selected={field.value}
                             onSelect={field.onChange}
-                            disabled={(date) => date < new Date()}
+                            disabled={(date) => date < new Date() || isLoading}
                             initialFocus
                           />
                         </PopoverContent>
@@ -222,7 +306,13 @@ export function CreateInvoiceForm() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Line Items</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm" 
+                onClick={addLineItem}
+                disabled={isLoading}
+              >
                 <Plus className="w-4 h-4" />
                 Add Item
               </Button>
@@ -239,7 +329,11 @@ export function CreateInvoiceForm() {
                           <FormItem>
                             {index === 0 && <FormLabel>Description</FormLabel>}
                             <FormControl>
-                              <Input placeholder="Item description" {...field} />
+                              <Input 
+                                placeholder="Item description" 
+                                disabled={isLoading}
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -257,6 +351,7 @@ export function CreateInvoiceForm() {
                               <Input
                                 type="number"
                                 min="1"
+                                disabled={isLoading}
                                 {...field}
                                 onChange={e => field.onChange(parseInt(e.target.value) || 1)}
                               />
@@ -278,6 +373,7 @@ export function CreateInvoiceForm() {
                                 type="number"
                                 min="0"
                                 step="0.01"
+                                disabled={isLoading}
                                 {...field}
                                 onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
                               />
@@ -296,6 +392,7 @@ export function CreateInvoiceForm() {
                           type="button"
                           variant="ghost"
                           size="icon"
+                          disabled={isLoading}
                           onClick={() => removeLineItem(index)}
                         >
                           <X className="w-4 h-4" />
@@ -327,7 +424,11 @@ export function CreateInvoiceForm() {
                   <FormItem>
                     <FormLabel>Memo</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Optional notes or memo" {...field} />
+                      <Textarea 
+                        placeholder="Optional notes or memo" 
+                        disabled={isLoading}
+                        {...field} 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -340,10 +441,16 @@ export function CreateInvoiceForm() {
                   <Input
                     placeholder="Add tag"
                     value={currentTag}
+                    disabled={isLoading}
                     onChange={(e) => setCurrentTag(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
                   />
-                  <Button type="button" variant="outline" onClick={addTag}>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={addTag}
+                    disabled={isLoading}
+                  >
                     Add
                   </Button>
                 </div>
@@ -357,6 +464,7 @@ export function CreateInvoiceForm() {
                           variant="ghost"
                           size="icon"
                           className="h-4 w-4"
+                          disabled={isLoading}
                           onClick={() => removeTag(tag)}
                         >
                           <X className="w-3 h-3" />
@@ -370,11 +478,40 @@ export function CreateInvoiceForm() {
           </Card>
 
           <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline">
-              Save as Draft
+            <Button 
+              type="button" 
+              variant="outline"
+              disabled={isLoading}
+              onClick={saveDraft}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save as Draft
+                </>
+              )}
             </Button>
-            <Button type="submit" variant="hero">
-              Create & Send Invoice
+            <Button 
+              type="submit" 
+              variant="hero"
+              disabled={isLoading || subtotal === 0}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating Invoice...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Create & Send Invoice
+                </>
+              )}
             </Button>
           </div>
         </form>
