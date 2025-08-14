@@ -21,6 +21,16 @@ import { toBytes32Address, ZERO_BYTES32 } from "./utils/bytes.js";
 
 const app = express();
 app.use(express.json());
+// CORS for local UI (allow all during dev)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 const PORT = 5454;
 
@@ -59,7 +69,7 @@ app.post("/cctp/burn", async (req, res) => {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ error: "Request body is required" });
     }
-    const { sourceNetwork, destinationNetwork, amount, destinationAddress, maxFee, minFinalityThreshold } = req.body;
+    const { sourceNetwork, destinationNetwork, amount, destinationAddress, minFinalityThreshold } = req.body;
 
     if (!sourceNetwork) return res.status(400).json({ error: "sourceNetwork is required" });
     if (!destinationNetwork) return res.status(400).json({ error: "destinationNetwork is required" });
@@ -81,7 +91,7 @@ app.post("/cctp/burn", async (req, res) => {
       mintRecipientBytes32: toBytes32Address(destinationAddress),
       burnTokenAddress,
       destinationCallerBytes32: ZERO_BYTES32,
-      maxFee: maxFee ?? DEFAULT_MAX_FEE,
+      maxFee: DEFAULT_MAX_FEE,
       minFinalityThreshold: minFinalityThreshold ?? DEFAULT_MIN_FINALITY_THRESHOLD_FAST,
       send: false,
     });
@@ -141,82 +151,7 @@ app.post("/cctp/mint", async (req, res) => {
   }
 });
 
-// Test endpoint to run the full flow with 1 USDC
-app.get("/test/transfer", async (req, res) => {
-  const PRIVATE_KEY = process.env.PRIVATE_KEY;
-  if (!PRIVATE_KEY) {
-    return res.status(400).json({ success: false, error: "Missing PRIVATE_KEY in environment" });
-  }
-
-  const DESTINATION_ADDRESS = "0x7A768a4fF560FCFCBf21689570A79A215B5f80A8";
-  const amount = 1_000_000n; // 1 USDC (6 decimals)
-  const maxFee = DEFAULT_MAX_FEE;
-  const approvalAmount = amount + maxFee;
-
-  try {
-    console.log("[TEST] Starting approval...");
-    const approveRes = await approveToken({
-      tokenAddress: USDC.sepolia,
-      spenderAddress: TOKEN_MESSENGER.sepolia,
-      amount: approvalAmount,
-      privateKey: PRIVATE_KEY,
-      chain: sepolia,
-      send: true,
-      waitForReceipt: true,
-    });
-    console.log("[TEST] Approval tx:", approveRes.hash);
-
-    console.log("[TEST] Burning on Sepolia...");
-    const burnRes = await depositForBurn({
-      tokenMessengerAddress: TOKEN_MESSENGER.sepolia,
-      amount,
-      destinationDomain: CCTP_DOMAIN.avalancheFuji,
-      mintRecipientBytes32: toBytes32Address(DESTINATION_ADDRESS),
-      burnTokenAddress: USDC.sepolia,
-      destinationCallerBytes32: ZERO_BYTES32,
-      maxFee,
-      minFinalityThreshold: DEFAULT_MIN_FINALITY_THRESHOLD_FAST,
-      privateKey: PRIVATE_KEY,
-      chain: sepolia,
-      send: true,
-      waitForReceipt: true,
-    });
-    console.log("[TEST] Burn tx:", burnRes.hash);
-
-    console.log("[TEST] Retrieving attestation...");
-    const attestation = await retrieveAttestation({
-      transactionHash: burnRes.hash,
-      baseUrl: IRIS_API.sandboxBaseUrl,
-      sourceDomain: CCTP_DOMAIN.sepolia,
-      intervalMs: DEFAULT_ATTESTATION_POLL_INTERVAL_MS,
-    });
-    console.log("[TEST] Attestation retrieved");
-
-    console.log("[TEST] Minting on Avalanche Fuji...");
-    const mintRes = await receiveMessageMint({
-      messageTransmitterAddress: MESSAGE_TRANSMITTER.avalancheFuji,
-      message: attestation.message,
-      attestation: attestation.attestation,
-      privateKey: PRIVATE_KEY,
-      chain: avalancheFuji,
-      send: true,
-      waitForReceipt: true,
-    });
-    console.log("[TEST] Mint tx:", mintRes.hash);
-
-    return res.json({
-      success: true,
-      destinationAddress: DESTINATION_ADDRESS,
-      amount: "1 USDC",
-      approvalTx: approveRes.hash,
-      burnTx: burnRes.hash,
-      mintTx: mintRes.hash,
-    });
-  } catch (error) {
-    console.error("[TEST] Transfer failed:", error);
-    return res.status(500).json({ success: false, error: error?.message || String(error) });
-  }
-});
+// Note: No server-signed transfer endpoints. All build-only; UI signs via user wallet.
 
 app.listen(PORT, () => {
   console.log(`server is starting on port ${PORT}`);
