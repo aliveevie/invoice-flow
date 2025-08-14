@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import { sepolia, avalancheFuji } from "viem/chains";
 import {
   approveToken,
   depositForBurn,

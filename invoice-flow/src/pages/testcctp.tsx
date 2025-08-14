@@ -207,8 +207,35 @@ export default function TestCctpPage() {
       });
       
       if (String(currentChain).toLowerCase() !== sourceNetworkInfo.chainId) {
-        appendLog(`Wallet is not on ${sourceNetworkInfo.displayName}. Please switch to ${sourceNetworkInfo.displayName} and retry.`);
-        return;
+        appendLog(`Wallet is not on ${sourceNetworkInfo.displayName}. Attempting to switch...`);
+        try {
+          await walletClient.request({
+            method: "wallet_switchEthereumChain" as any,
+            params: [{ chainId: sourceNetworkInfo.chainId }],
+          });
+          appendLog(`Successfully switched to ${sourceNetworkInfo.displayName}`);
+          
+          // Wait for the switch to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify the switch
+          const newChain = await walletClient.request({ 
+            method: "eth_chainId" as any,
+            params: []
+          });
+          
+          if (String(newChain).toLowerCase() !== sourceNetworkInfo.chainId) {
+            appendLog(`Failed to switch to ${sourceNetworkInfo.displayName}. Please manually switch and retry.`);
+            return;
+          }
+          appendLog(`Confirmed on ${sourceNetworkInfo.displayName}`);
+        } catch (err: any) {
+          appendLog(`Failed to switch to ${sourceNetworkInfo.displayName}: ${err.message}`);
+          appendLog(`Please manually switch to ${sourceNetworkInfo.displayName} and retry.`);
+          return;
+        }
+      } else {
+        appendLog(`Already on ${sourceNetworkInfo.displayName}`);
       }
 
       appendLog(`Starting CCTP transfer from ${sourceNetworkInfo.displayName} to ${NETWORKS[destinationNetwork as keyof typeof NETWORKS].displayName}`);
@@ -339,6 +366,10 @@ export default function TestCctpPage() {
         <Header />
         <main className="flex-1 p-6 overflow-auto">
           <h2 className="text-xl font-semibold mb-4">CCTP Test</h2>
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+            <strong>How to use:</strong> Select your source network (where you have USDC), enter amount and destination address, 
+            then select destination network. The system will automatically switch networks as needed for the transfer.
+          </div>
           <div className="space-y-3 max-w-2xl">
             <div>
               <label className="mr-2">From Network</label>
