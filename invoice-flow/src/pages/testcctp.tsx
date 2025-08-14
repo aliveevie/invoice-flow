@@ -4,40 +4,59 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { createWalletClient, custom } from "viem";
 
+// Network configuration
+const NETWORKS = {
+  sepolia: {
+    name: "Sepolia",
+    chainId: "0xaa36a7",
+    displayName: "Sepolia Testnet"
+  },
+  avalancheFuji: {
+    name: "Avalanche Fuji",
+    chainId: "0xa869",
+    displayName: "Avalanche Fuji Testnet"
+  }
+};
+
 export default function TestCctpPage() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
   const [logs, setLogs] = useState<string[]>([]);
   const [destAddress, setDestAddress] = useState("");
-  const [amountSubunits, setAmountSubunits] = useState("");
+  const [amount, setAmount] = useState(""); // Human readable amount (e.g., "1.5")
+  const [sourceNetwork, setSourceNetwork] = useState("sepolia");
+  const [destinationNetwork, setDestinationNetwork] = useState("avalancheFuji");
   const [burnTxHash, setBurnTxHash] = useState<string>("");
   const [isRetryingAttestation, setIsRetryingAttestation] = useState(false);
   const appendLog = useCallback((m: string) => setLogs((l) => [...l, m]), []);
 
-  const switchToFuji = useCallback(async () => {
-    if (!walletClient) return appendLog("Wallet client not ready");
-    try {
-      appendLog("Manually switching to Avalanche Fuji...");
-      await walletClient.request({
-        method: "wallet_switchEthereumChain" as any,
-        params: [{ chainId: "0xa869" }],
-      });
-      appendLog("Successfully switched to Fuji");
-    } catch (err: any) {
-      appendLog(`Chain switch error: ${err.message}`);
-    }
-  }, [walletClient, appendLog]);
+  // Convert human readable amount to subunits
+  const getAmountSubunits = useCallback((humanAmount: string) => {
+    if (!humanAmount || isNaN(Number(humanAmount))) return "0";
+    const amountFloat = parseFloat(humanAmount);
+    return Math.floor(amountFloat * 1000000).toString(); // USDC has 6 decimals
+  }, []);
 
-  const switchToSepolia = useCallback(async () => {
+  // Convert subunits to human readable
+  const getHumanReadableAmount = useCallback((subunits: string) => {
+    if (!subunits || isNaN(Number(subunits))) return "0";
+    const subunitsNum = parseInt(subunits);
+    return (subunitsNum / 1000000).toFixed(6);
+  }, []);
+
+  const switchToNetwork = useCallback(async (networkKey: string) => {
     if (!walletClient) return appendLog("Wallet client not ready");
+    const network = NETWORKS[networkKey as keyof typeof NETWORKS];
+    if (!network) return appendLog(`Unknown network: ${networkKey}`);
+    
     try {
-      appendLog("Manually switching to Sepolia...");
+      appendLog(`Manually switching to ${network.displayName}...`);
       await walletClient.request({
         method: "wallet_switchEthereumChain" as any,
-        params: [{ chainId: "0xaa36a7" }],
+        params: [{ chainId: network.chainId }],
       });
-      appendLog("Successfully switched to Sepolia");
+      appendLog(`Successfully switched to ${network.displayName}`);
     } catch (err: any) {
       appendLog(`Chain switch error: ${err.message}`);
     }
@@ -71,33 +90,34 @@ export default function TestCctpPage() {
     setIsRetryingAttestation(true);
     try {
       appendLog("Retrying attestation...");
-      const attestation = await callServer("GET", `/cctp/attestation?txHash=${burnTxHash}&sourceNetwork=sepolia`);
+      const attestation = await callServer("GET", `/cctp/attestation?txHash=${burnTxHash}&sourceNetwork=${encodeURIComponent(sourceNetwork)}`);
       appendLog("Attestation retrieved successfully!");
       
       appendLog("Building mint...");
       const mintBuilt = await callServer("POST", "/cctp/mint", {
-        destinationNetwork: "avalancheFuji",
+        destinationNetwork,
         message: attestation.message,
         attestation: attestation.attestation,
       });
       appendLog(`Mint built: to=${mintBuilt.to}, data=${mintBuilt.data}`);
       
-      // Ensure wallet is on Fuji for mint
-      appendLog("Checking current chain...");
+      // Ensure wallet is on destination network for mint
+      const destNetwork = NETWORKS[destinationNetwork as keyof typeof NETWORKS];
+      appendLog(`Checking current chain...`);
       const currentChain = await walletClient.request({ 
         method: "eth_chainId" as any,
         params: []
       });
       appendLog(`Current chain: ${currentChain}`);
       
-      if (String(currentChain).toLowerCase() !== "0xa869") {
-        appendLog("Switching to Avalanche Fuji...");
+      if (String(currentChain).toLowerCase() !== destNetwork.chainId) {
+        appendLog(`Switching to ${destNetwork.displayName}...`);
         try {
           await walletClient.request({
             method: "wallet_switchEthereumChain" as any,
-            params: [{ chainId: "0xa869" }],
+            params: [{ chainId: destNetwork.chainId }],
           });
-          appendLog("Successfully switched to Fuji");
+          appendLog(`Successfully switched to ${destNetwork.displayName}`);
           
           // Wait a moment for the switch to complete
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -109,28 +129,28 @@ export default function TestCctpPage() {
           });
           appendLog(`New chain after switch: ${newChain}`);
           
-          if (String(newChain).toLowerCase() !== "0xa869") {
-            appendLog("Chain switch failed. Please manually switch to Avalanche Fuji and retry.");
+          if (String(newChain).toLowerCase() !== destNetwork.chainId) {
+            appendLog(`Chain switch failed. Please manually switch to ${destNetwork.displayName} and retry.`);
             return;
           }
-          appendLog("Confirmed on Fuji, proceeding with mint...");
+          appendLog(`Confirmed on ${destNetwork.displayName}, proceeding with mint...`);
         } catch (err: any) {
-          appendLog(`Chain switch error: ${err.message}. Please switch to Avalanche Fuji manually and retry.`);
+          appendLog(`Chain switch error: ${err.message}. Please switch to ${destNetwork.displayName} manually and retry.`);
           return;
         }
       } else {
-        appendLog("Already on Fuji, proceeding with mint...");
+        appendLog(`Already on ${destNetwork.displayName}, proceeding with mint...`);
       }
       
-      appendLog("Sending mint on Fuji...");
-      // Create a new wallet client for Fuji to avoid chain mismatch
-      const fujiWalletClient = createWalletClient({
-        chain: { id: 43113, name: 'Avalanche Fuji' } as any,
+      appendLog("Sending mint...");
+      // Create a new wallet client for destination network to avoid chain mismatch
+      const destWalletClient = createWalletClient({
+        chain: { id: parseInt(destNetwork.chainId, 16), name: destNetwork.displayName } as any,
         transport: custom((window as any).ethereum),
         account: address as `0x${string}`,
       });
       
-      const mintHash = await fujiWalletClient.sendTransaction({
+      const mintHash = await destWalletClient.sendTransaction({
         to: mintBuilt.to as `0x${string}`,
         data: mintBuilt.data as `0x${string}`,
         account: address as `0x${string}`,
@@ -138,43 +158,49 @@ export default function TestCctpPage() {
         kzg: undefined,
       });
       appendLog(`Mint tx: ${mintHash}`);
-      appendLog("Success: USDC transferred Sepolia -> Fuji");
+      appendLog(`Success: USDC transferred ${NETWORKS[sourceNetwork as keyof typeof NETWORKS].displayName} -> ${destNetwork.displayName}`);
     } catch (e: any) {
       console.error(e);
       appendLog(`Error: ${e?.message || String(e)}`);
     } finally {
       setIsRetryingAttestation(false);
     }
-  }, [burnTxHash, callServer, appendLog, walletClient, address]);
+  }, [burnTxHash, callServer, appendLog, walletClient, address, sourceNetwork, destinationNetwork]);
 
   const transfer = useCallback(async () => {
     if (!isConnected || !address) return appendLog("Connect wallet first");
     if (!walletClient) return appendLog("Wallet client not ready");
     if (!destAddress) return appendLog("Enter destination address");
-    if (!amountSubunits) return appendLog("Enter amount in subunits (6 decimals for USDC, e.g., 1000000)");
+    if (!amount) return appendLog("Enter amount (e.g., 1.5 for 1.5 USDC)");
+    
+    const amountSubunits = getAmountSubunits(amount);
+    if (amountSubunits === "0") return appendLog("Invalid amount");
     
     setLogs([]);
     setBurnTxHash(""); // Reset burn hash for new transfer
     try {
-      // Derive networks from wallet
-      const chainId = await walletClient.request({ 
+      // Check if wallet is on source network
+      const sourceNetworkInfo = NETWORKS[sourceNetwork as keyof typeof NETWORKS];
+      const currentChain = await walletClient.request({ 
         method: "eth_chainId" as any,
         params: []
       });
-      if (String(chainId).toLowerCase() !== "0xaa36a7") {
-        appendLog("Wallet is not on Sepolia. Please switch to Sepolia and retry.");
+      
+      if (String(currentChain).toLowerCase() !== sourceNetworkInfo.chainId) {
+        appendLog(`Wallet is not on ${sourceNetworkInfo.displayName}. Please switch to ${sourceNetworkInfo.displayName} and retry.`);
         return;
       }
-      const sourceNetwork = "sepolia";
-      const destinationNetwork = "avalancheFuji";
+
+      appendLog(`Starting CCTP transfer from ${sourceNetworkInfo.displayName} to ${NETWORKS[destinationNetwork as keyof typeof NETWORKS].displayName}`);
+      appendLog(`Amount: ${amount} USDC (${amountSubunits} subunits)`);
 
       appendLog("Building approval...");
       const approval = await callServer("POST", "/cctp/approve", {
         network: sourceNetwork,
-        amount: amountSubunits, // User's exact transfer amount
+        amount: amountSubunits,
       });
       appendLog(`Approval built: to=${approval.to}, data=${approval.data}`);
-      appendLog(`Note: Approval amount is exactly what you want to transfer: ${amountSubunits} subunits`);
+      appendLog(`Note: Approval amount is exactly what you want to transfer: ${amount} USDC`);
       
       appendLog("Sending approval...");
       const approveHash = await walletClient.sendTransaction({
@@ -192,7 +218,7 @@ export default function TestCctpPage() {
         destinationNetwork,
         amount: amountSubunits,
         destinationAddress: destAddress,
-        maxFee: 500, // Protocol fee: 0.0005 USDC (500 subunits) - same as transfer.js
+        maxFee: 500, // Protocol fee: 0.0005 USDC (500 subunits)
       });
       appendLog(`Burn built: to=${burnBuilt.to}, data=${burnBuilt.data}`);
       appendLog(`Note: maxFee=500 is the CCTP protocol fee (0.0005 USDC), not gas fees`);
@@ -222,22 +248,23 @@ export default function TestCctpPage() {
       });
       appendLog(`Mint built: to=${mintBuilt.to}, data=${mintBuilt.data}`);
       
-      // Ensure wallet is on Fuji for mint
-      appendLog("Checking current chain...");
-      const currentChain = await walletClient.request({ 
+      // Ensure wallet is on destination network for mint
+      const destNetwork = NETWORKS[destinationNetwork as keyof typeof NETWORKS];
+      appendLog(`Checking current chain...`);
+      const currentChainForMint = await walletClient.request({ 
         method: "eth_chainId" as any,
         params: []
       });
-      appendLog(`Current chain: ${currentChain}`);
+      appendLog(`Current chain: ${currentChainForMint}`);
       
-      if (String(currentChain).toLowerCase() !== "0xa869") {
-        appendLog("Switching to Avalanche Fuji...");
+      if (String(currentChainForMint).toLowerCase() !== destNetwork.chainId) {
+        appendLog(`Switching to ${destNetwork.displayName}...`);
         try {
           await walletClient.request({
             method: "wallet_switchEthereumChain" as any,
-            params: [{ chainId: "0xa869" }],
+            params: [{ chainId: destNetwork.chainId }],
           });
-          appendLog("Successfully switched to Fuji");
+          appendLog(`Successfully switched to ${destNetwork.displayName}`);
           
           // Wait a moment for the switch to complete
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -249,28 +276,28 @@ export default function TestCctpPage() {
           });
           appendLog(`New chain after switch: ${newChain}`);
           
-          if (String(newChain).toLowerCase() !== "0xa869") {
-            appendLog("Chain switch failed. Please manually switch to Avalanche Fuji and retry.");
+          if (String(newChain).toLowerCase() !== destNetwork.chainId) {
+            appendLog(`Chain switch failed. Please manually switch to ${destNetwork.displayName} and retry.`);
             return;
           }
-          appendLog("Confirmed on Fuji, proceeding with mint...");
+          appendLog(`Confirmed on ${destNetwork.displayName}, proceeding with mint...`);
         } catch (err: any) {
-          appendLog(`Chain switch error: ${err.message}. Please switch to Avalanche Fuji manually and retry.`);
+          appendLog(`Chain switch error: ${err.message}. Please switch to ${destNetwork.displayName} manually and retry.`);
           return;
         }
       } else {
-        appendLog("Already on Fuji, proceeding with mint...");
+        appendLog(`Already on ${destNetwork.displayName}, proceeding with mint...`);
       }
       
-      appendLog("Sending mint on Fuji...");
-      // Create a new wallet client for Fuji to avoid chain mismatch
-      const fujiWalletClient = createWalletClient({
-        chain: { id: 43113, name: 'Avalanche Fuji' } as any,
+      appendLog("Sending mint...");
+      // Create a new wallet client for destination network to avoid chain mismatch
+      const destWalletClient = createWalletClient({
+        chain: { id: parseInt(destNetwork.chainId, 16), name: destNetwork.displayName } as any,
         transport: custom((window as any).ethereum),
         account: address as `0x${string}`,
       });
       
-      const mintHash = await fujiWalletClient.sendTransaction({
+      const mintHash = await destWalletClient.sendTransaction({
         to: mintBuilt.to as `0x${string}`,
         data: mintBuilt.data as `0x${string}`,
         account: address as `0x${string}`,
@@ -278,12 +305,12 @@ export default function TestCctpPage() {
         kzg: undefined,
       });
       appendLog(`Mint tx: ${mintHash}`);
-      appendLog("Success: USDC transferred Sepolia -> Fuji");
+      appendLog(`Success: USDC transferred ${sourceNetworkInfo.displayName} -> ${destNetwork.displayName}`);
     } catch (e: any) {
       console.error(e);
       appendLog(`Error: ${e?.message || String(e)}`);
     }
-  }, [isConnected, address, destAddress, callServer, appendLog, amountSubunits, walletClient]);
+  }, [isConnected, address, destAddress, callServer, appendLog, amount, sourceNetwork, destinationNetwork, getAmountSubunits, walletClient]);
 
   return (
     <div className="flex h-screen bg-gradient-bg">
@@ -294,12 +321,47 @@ export default function TestCctpPage() {
           <h2 className="text-xl font-semibold mb-4">CCTP Test</h2>
           <div className="space-y-3 max-w-2xl">
             <div>
-              <label className="mr-2">Destination Address</label>
-              <input className="border px-2 py-1 w-[420px]" value={destAddress} onChange={(e) => setDestAddress(e.target.value)} />
+              <label className="mr-2">From Network</label>
+              <select 
+                className="border px-2 py-1 w-[200px]" 
+                value={sourceNetwork} 
+                onChange={(e) => setSourceNetwork(e.target.value)}
+              >
+                {Object.entries(NETWORKS).map(([key, network]) => (
+                  <option key={key} value={key}>{network.displayName}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="mr-2">Amount (subunits, USDC 6 decimals e.g., 1000000)</label>
-              <input className="border px-2 py-1 w-[300px]" value={amountSubunits} onChange={(e) => setAmountSubunits(e.target.value)} />
+              <label className="mr-2">To Network</label>
+              <select 
+                className="border px-2 py-1 w-[200px]" 
+                value={destinationNetwork} 
+                onChange={(e) => setDestinationNetwork(e.target.value)}
+              >
+                {Object.entries(NETWORKS).map(([key, network]) => (
+                  <option key={key} value={key}>{network.displayName}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mr-2">Amount (USDC)</label>
+              <input 
+                className="border px-2 py-1 w-[200px]" 
+                type="number" 
+                step="0.000001" 
+                min="0.000001"
+                placeholder="1.5" 
+                value={amount} 
+                onChange={(e) => setAmount(e.target.value)} 
+              />
+              <span className="ml-2 text-sm text-gray-600">
+                {amount ? `(${getAmountSubunits(amount)} subunits)` : ""}
+              </span>
+            </div>
+            <div>
+              <label className="mr-2">Destination Address</label>
+              <input className="border px-2 py-1 w-[420px]" value={destAddress} onChange={(e) => setDestAddress(e.target.value)} />
             </div>
             <div className="flex gap-2">
               <button onClick={transfer} disabled={!isConnected || !walletClient} className="px-4 py-2 bg-blue-600 text-white rounded">
@@ -316,12 +378,16 @@ export default function TestCctpPage() {
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={switchToSepolia} disabled={!isConnected || !walletClient} className="px-3 py-1 bg-gray-600 text-white rounded text-sm">
-                Switch to Sepolia
-              </button>
-              <button onClick={switchToFuji} disabled={!isConnected || !walletClient} className="px-3 py-1 bg-orange-600 text-white rounded text-sm">
-                Switch to Fuji
-              </button>
+              {Object.entries(NETWORKS).map(([key, network]) => (
+                <button 
+                  key={key}
+                  onClick={() => switchToNetwork(key)} 
+                  disabled={!isConnected || !walletClient} 
+                  className="px-3 py-1 bg-gray-600 text-white rounded text-sm"
+                >
+                  Switch to {network.name}
+                </button>
+              ))}
             </div>
             <div>
               <h4 className="font-medium">Logs</h4>
