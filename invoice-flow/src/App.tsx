@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
 import CreateInvoice from "./pages/CreateInvoice";
+import TestCctpPage from "./pages/testcctp";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import '@rainbow-me/rainbowkit/styles.css';
@@ -28,6 +29,7 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/invoices/new" element={<CreateInvoice />} />
+              <Route path="/testcctp" element={<TestCctpPage />} />
               <Route path="/settings" element={<Settings />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
