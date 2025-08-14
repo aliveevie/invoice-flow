@@ -9,12 +9,32 @@ const NETWORKS = {
   sepolia: {
     name: "Sepolia",
     chainId: "0xaa36a7",
-    displayName: "Sepolia Testnet"
+    displayName: "Ethereum Sepolia Testnet"
   },
   avalancheFuji: {
     name: "Avalanche Fuji",
     chainId: "0xa869",
     displayName: "Avalanche Fuji Testnet"
+  },
+  optimismSepolia: {
+    name: "Optimism Sepolia",
+    chainId: "0xaa37dc",
+    displayName: "Optimism Sepolia Testnet"
+  },
+  arbitrumSepolia: {
+    name: "Arbitrum Sepolia",
+    chainId: "0x66eee",
+    displayName: "Arbitrum Sepolia Testnet"
+  },
+  baseSepolia: {
+    name: "Base Sepolia",
+    chainId: "0x14a33",
+    displayName: "Base Sepolia Testnet"
+  },
+  polygonAmoy: {
+    name: "Polygon Amoy",
+    chainId: "0x13881",
+    displayName: "Polygon Amoy Testnet"
   }
 };
 
