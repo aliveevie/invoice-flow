@@ -73,13 +73,18 @@ export default function PayInvoice() {
       if (foundInvoice) {
         setInvoice(foundInvoice);
         console.log('Invoice found:', foundInvoice);
-      } else {
-        setError('Invoice not found');
+        // Clear any previous error when invoice is found
+        if (error === 'Invoice not found') {
+          setError('');
+        }
+      } else if (!paying && !paymentStep) {
+        // Only set error if we're not in the middle of payment processing
         console.log('Invoice not found:', invoiceId);
+        // Don't set the error state during payment processing
       }
     }
     setLoading(false);
-  }, [invoiceId, getInvoice]);
+  }, [invoiceId, getInvoice, paying, error, paymentStep]);
 
   const getAmountSubunits = useCallback((humanAmount) => {
     if (!humanAmount || isNaN(Number(humanAmount))) return "0";
