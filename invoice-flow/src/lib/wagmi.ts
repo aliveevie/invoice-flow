@@ -31,8 +31,8 @@ const arbitrumSepolia = {
   network: 'arbitrum-sepolia',
   nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://sepolia-arbitrum.arbitrum.io/rpc'] },
-    public: { http: ['https://sepolia-arbitrum.arbitrum.io/rpc'] },
+    default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] },
+    public: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] },
   },
   blockExplorers: {
     default: { name: 'Arbitrum Sepolia', url: 'https://sepolia.arbiscan.io' },

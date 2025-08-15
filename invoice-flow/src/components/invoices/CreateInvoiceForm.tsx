@@ -18,11 +18,9 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useInvoices } from '@/hooks/use-invoices';
 
-const createInvoiceSchema = z.object({
+const baseInvoiceSchema = z.object({
   customerEmail: z.string().min(1, 'Email is required').email('Invalid email address'),
   customerName: z.string().min(1, 'Customer name is required'),
-  currencyType: z.enum(['fiat', 'usdc']),
-  fiatCurrency: z.string().optional(),
   lineItems: z.array(z.object({
     description: z.string().min(1, 'Description is required'),
     quantity: z.number().min(1, 'Quantity must be at least 1'),
@@ -32,6 +30,21 @@ const createInvoiceSchema = z.object({
   memo: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
+
+const createInvoiceSchema = z.discriminatedUnion('currencyType', [
+  baseInvoiceSchema.extend({
+    currencyType: z.literal('fiat'),
+    fiatCurrency: z.string().min(1, 'Fiat currency is required'),
+    recipientAddress: z.string().optional(),
+  }),
+  baseInvoiceSchema.extend({
+    currencyType: z.literal('usdc'),
+    fiatCurrency: z.string().optional(),
+    recipientAddress: z.string()
+      .min(1, 'Recipient wallet address is required for USDC invoices')
+      .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid wallet address format (must be 42 characters starting with 0x)'),
+  }),
+]);
 
 type CreateInvoiceForm = z.infer<typeof createInvoiceSchema>;
 
@@ -97,6 +110,7 @@ export function CreateInvoiceForm() {
         customerEmail: data.customerEmail,
         currencyType: data.currencyType,
         fiatCurrency: data.fiatCurrency,
+        recipientAddress: data.recipientAddress,
         lineItems: data.lineItems.map(item => ({
           description: item.description || 'Untitled Item',
           quantity: item.quantity || 1,
@@ -153,13 +167,14 @@ export function CreateInvoiceForm() {
         customerEmail: data.customerEmail || 'draft@example.com',
         currencyType: data.currencyType,
         fiatCurrency: data.fiatCurrency,
+        recipientAddress: data.recipientAddress,
         lineItems: (data.lineItems || [{ description: 'Draft item', quantity: 1, unitPrice: 0 }]).map(item => ({
           description: item.description || 'Untitled Item',
           quantity: item.quantity || 1,
           unitPrice: item.unitPrice || 0
         })),
         subtotal: subtotal,
-        dueDate: data.dueDate || new Date(),
+        dueDate: (data.dueDate || new Date()).toISOString(),
         memo: data.memo || '',
         tags: data.tags || [],
         status: 'draft' as const,
@@ -284,6 +299,29 @@ export function CreateInvoiceForm() {
                             <SelectItem value="GBP">GBP</SelectItem>
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {watchedCurrencyType === 'usdc' && (
+                  <FormField
+                    control={form.control}
+                    name="recipientAddress"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Recipient Wallet Address *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="0x1234567890123456789012345678901234567890" 
+                            {...field} 
+                            disabled={isLoading}
+                          />
+                        </FormControl>
+                        <p className="text-sm text-muted-foreground">
+                          The wallet address where USDC payment will be received
+                        </p>
                         <FormMessage />
                       </FormItem>
                     )}

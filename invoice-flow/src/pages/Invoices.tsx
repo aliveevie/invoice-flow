@@ -271,6 +271,11 @@ export default function Invoices() {
                                   via {invoice.chain}
                                 </div>
                               )}
+                              {invoice.currencyType === 'usdc' && invoice.recipientAddress && (
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  to {invoice.recipientAddress.slice(0, 6)}...{invoice.recipientAddress.slice(-4)}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex flex-col gap-2">

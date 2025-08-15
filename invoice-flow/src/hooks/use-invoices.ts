@@ -6,6 +6,7 @@ export interface Invoice {
   customerEmail: string;
   currencyType: 'fiat' | 'usdc';
   fiatCurrency?: string;
+  recipientAddress?: string; // Wallet address where USDC should be sent (required for USDC invoices)
   lineItems: Array<{
     description: string;
     quantity: number;

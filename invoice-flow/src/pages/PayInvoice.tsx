@@ -147,11 +147,16 @@ export default function PayInvoice() {
 
       // Step 3: Burn USDC
       setPaymentStep('Building burn transaction...');
+      // Validate recipient address
+      if (!invoice.recipientAddress) {
+        throw new Error('This invoice is missing a recipient address. Please contact the invoice issuer.');
+      }
+
       const burnData = await callServer('/cctp/burn', {
         sourceNetwork: selectedNetwork,
         destinationNetwork: destinationNetwork,
         amount: amount,
-        recipientAddress: address // Customer receives USDC on destination
+        recipientAddress: invoice.recipientAddress
       });
 
       setPaymentStep('Please confirm USDC burn...');
@@ -353,6 +358,16 @@ export default function PayInvoice() {
             </span>
           </div>
 
+          {/* Recipient Address for USDC */}
+          {invoice.currencyType === 'usdc' && invoice.recipientAddress && (
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Payment To:</span>
+              <span className="font-mono text-sm">
+                {invoice.recipientAddress.slice(0, 6)}...{invoice.recipientAddress.slice(-4)}
+              </span>
+            </div>
+          )}
+
           {/* Memo */}
           {invoice.memo && (
             <div>
@@ -368,7 +383,13 @@ export default function PayInvoice() {
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Pay with USDC (Cross-Chain)</h3>
                 
-                {!isConnected ? (
+                {!invoice.recipientAddress ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      This invoice is missing a recipient address and cannot be paid. Please contact the invoice issuer.
+                    </AlertDescription>
+                  </Alert>
+                ) : !isConnected ? (
                   <Alert>
                     <AlertDescription>
                       Please connect your wallet to pay this invoice with USDC.
@@ -435,7 +456,7 @@ export default function PayInvoice() {
                     {/* Pay Button */}
                     <Button 
                       onClick={handlePayment}
-                      disabled={paying || !isConnected}
+                      disabled={paying || !isConnected || !invoice.recipientAddress}
                       className="w-full"
                       size="lg"
                     >
