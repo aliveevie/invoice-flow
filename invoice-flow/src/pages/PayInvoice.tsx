@@ -23,6 +23,30 @@ const NETWORKS = {
 
 const API_BASE_URL = 'http://localhost:5454';
 
+const getNetworkRpcUrl = (networkKey: string) => {
+  const rpcUrls = {
+    sepolia: 'https://sepolia.infura.io/v3/YOUR_PROJECT_ID',
+    avalancheFuji: 'https://api.avax-test.network/ext/bc/C/rpc',
+    optimismSepolia: 'https://sepolia.optimism.io',
+    arbitrumSepolia: 'https://sepolia-rollup.arbitrum.io/rpc',
+    baseSepolia: 'https://sepolia.base.org',
+    polygonAmoy: 'https://rpc-amoy.polygon.technology'
+  };
+  return rpcUrls[networkKey] || rpcUrls.sepolia;
+};
+
+const getNetworkExplorerUrl = (networkKey: string) => {
+  const explorerUrls = {
+    sepolia: 'https://sepolia.etherscan.io',
+    avalancheFuji: 'https://testnet.snowtrace.io',
+    optimismSepolia: 'https://sepolia-optimism.etherscan.io',
+    arbitrumSepolia: 'https://sepolia.arbiscan.io',
+    baseSepolia: 'https://sepolia.basescan.org',
+    polygonAmoy: 'https://www.oklink.com/amoy'
+  };
+  return explorerUrls[networkKey] || explorerUrls.sepolia;
+};
+
 export default function PayInvoice() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
@@ -75,33 +99,207 @@ export default function PayInvoice() {
     }
   }, []);
 
-  const switchNetwork = useCallback(async (targetChainId) => {
-    if (!window.ethereum) {
-      throw new Error('MetaMask not found');
+  const callServerGet = useCallback(async (endpoint, params) => {
+    try {
+      console.log(`[API] Calling GET ${endpoint}:`, params);
+      const response = await axios.get(`${API_BASE_URL}${endpoint}`, { params });
+      console.log(`[API] Response from ${endpoint}:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`[API] Error calling ${endpoint}:`, error);
+      throw new Error(error.response?.data?.error || error.message);
+    }
+  }, []);
+
+  const switchNetwork = useCallback(async (networkKey) => {
+    if (!walletClient) {
+      throw new Error('Wallet client not ready');
+    }
+
+    const network = NETWORKS[networkKey];
+    if (!network) {
+      throw new Error(`Unknown network: ${networkKey}`);
     }
 
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: targetChainId }],
+      console.log(`Checking current chain...`);
+      const currentChain = await walletClient.request({ 
+        method: "eth_chainId" as any,
+        params: []
       });
-      console.log(`Switched to chain ${targetChainId}`);
+      console.log(`Current chain: ${currentChain}, Target: ${network.chainId}`);
       
-      // Wait a bit for the switch to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify the switch worked
-      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-      if (currentChainId !== targetChainId) {
-        throw new Error(`Failed to switch to chain ${targetChainId}. Current: ${currentChainId}`);
+      if (String(currentChain).toLowerCase() === network.chainId.toLowerCase()) {
+        console.log(`Already on ${network.displayName}`);
+        return true;
       }
-      
-      return true;
+
+      console.log(`Switching to ${network.displayName}...`);
+      try {
+        await walletClient.request({
+          method: "wallet_switchEthereumChain" as any,
+          params: [{ chainId: network.chainId }],
+        });
+        console.log(`Successfully switched to ${network.displayName}`);
+        
+        // Wait a moment for the switch to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Verify the switch
+        const newChain = await walletClient.request({ 
+          method: "eth_chainId" as any,
+          params: []
+        });
+        console.log(`New chain after switch: ${newChain}`);
+        
+        if (String(newChain).toLowerCase() !== network.chainId.toLowerCase()) {
+          throw new Error(`Chain switch verification failed. Expected: ${network.chainId}, Got: ${newChain}`);
+        }
+        
+        console.log(`Confirmed on ${network.displayName}`);
+        return true;
+      } catch (switchError) {
+        console.log(`Chain switch failed: ${switchError.message}`);
+        // If the chain doesn't exist, try to add it
+        if (switchError.message.includes('Unrecognized chain ID') || switchError.code === 4902) {
+          console.log(`Attempting to add ${network.displayName} to wallet...`);
+          try {
+            await walletClient.request({
+              method: 'wallet_addEthereumChain' as any,
+              params: [
+                {
+                  chainId: network.chainId,
+                  chainName: network.displayName,
+                  nativeCurrency: {
+                    name: 'ETH',
+                    symbol: 'ETH',
+                    decimals: 18,
+                  },
+                  rpcUrls: [getNetworkRpcUrl(networkKey)],
+                  blockExplorerUrls: [getNetworkExplorerUrl(networkKey)],
+                },
+              ],
+            });
+            console.log(`Successfully added ${network.displayName} to wallet`);
+            
+            // Now try to switch again
+            await walletClient.request({
+              method: "wallet_switchEthereumChain" as any,
+              params: [{ chainId: network.chainId }],
+            });
+            console.log(`Successfully switched to ${network.displayName} after adding`);
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return true;
+          } catch (addError) {
+            console.error(`Failed to add chain: ${addError.message}`);
+            throw new Error(`Failed to add ${network.displayName} to wallet. Please add it manually.`);
+          }
+        } else {
+          throw switchError;
+        }
+      }
     } catch (error) {
       console.error('Error switching network:', error);
-      throw error;
+      throw new Error(`Failed to switch to ${network.displayName}: ${error.message}`);
     }
-  }, []);
+  }, [walletClient]);
+
+  const handleRetryMint = async () => {
+    if (!invoice || !isConnected || !address || !invoice.paymentTxHash) {
+      setError('Cannot retry - missing required information');
+      return;
+    }
+
+    setPaying(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // Start from attestation step since burn was already successful
+      setPaymentStep('Retrieving attestation for previous burn...');
+      const attestationData = await callServerGet('/cctp/attestation', {
+        txHash: invoice.paymentTxHash,
+        sourceNetwork: invoice.paymentNetwork || selectedNetwork
+      });
+      console.log('Attestation retrieved for retry:', attestationData);
+
+      // Switch to destination network
+      setPaymentStep('Switching to destination network...');
+      await switchNetwork(destinationNetwork);
+
+      // Create wallet client for destination network
+      const destWalletClient = createWalletClient({
+        chain: { id: parseInt(NETWORKS[destinationNetwork].chainId, 16), name: NETWORKS[destinationNetwork].displayName } as any,
+        transport: custom((window as any).ethereum),
+        account: address as `0x${string}`,
+      });
+
+      // Mint USDC on destination
+      setPaymentStep('Building mint transaction...');
+      const mintData = await callServer('/cctp/mint', {
+        destinationNetwork: destinationNetwork,
+        message: attestationData.message,
+        attestation: attestationData.attestation
+      });
+
+      setPaymentStep('Please confirm USDC mint...');
+      const mintTx = await destWalletClient.sendTransaction({
+        to: mintData.to as `0x${string}`,
+        data: mintData.data as `0x${string}`,
+        account: address as `0x${string}`,
+        chain: undefined,
+        kzg: undefined,
+      });
+      console.log('Mint transaction sent:', mintTx);
+
+      setPaymentStep('Waiting for mint confirmation...');
+      const mintReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: mintTx,
+        timeout: 120_000 // 2 minute timeout
+      });
+      console.log('Mint confirmed:', mintReceipt);
+
+      // Update invoice status
+      setPaymentStep('Updating invoice status...');
+      updateInvoice(invoice.id, {
+        status: 'paid',
+        receiveTxHash: mintTx,
+        receiveNetwork: destinationNetwork,
+        paidAt: new Date().toISOString(),
+        attestationMessage: attestationData.message,
+        attestationSignature: attestationData.attestation,
+        lastFailedStep: undefined // Clear the failed step
+      });
+
+      setSuccess(`Payment completed! Your USDC transfer is now complete.`);
+      setPaymentStep('Retry successful - payment completed!');
+      
+      // Redirect to success page after a delay
+      setTimeout(() => {
+        navigate(`/invoice-paid/${invoice.id}`);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Retry error:', error);
+      
+      let errorMessage = '';
+      if (error.message.includes('User rejected')) {
+        errorMessage = 'Transaction was rejected by user';
+      } else if (error.message.includes('Timed out while waiting')) {
+        errorMessage = 'Transaction confirmation timed out. The transaction may still be processing. Please check your wallet.';
+      } else if (error.message.includes('Unrecognized chain ID')) {
+        errorMessage = `Network error: ${error.message}. Please add the required network to your wallet.`;
+      } else {
+        errorMessage = error.message || 'Unknown error occurred';
+      }
+      
+      setError(`Retry failed: ${errorMessage}`);
+      setPaymentStep('');
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const handlePayment = async () => {
     if (!invoice || !isConnected || !address) {
@@ -117,6 +315,8 @@ export default function PayInvoice() {
     setPaying(true);
     setError('');
     setSuccess('');
+    
+    let burnTx: string | undefined = undefined; // Declare burnTx variable
 
     try {
       const amount = getAmountSubunits(invoice.subtotal.toString());
@@ -124,8 +324,7 @@ export default function PayInvoice() {
 
       // Step 1: Switch to source network
       setPaymentStep('Switching to source network...');
-      const sourceChainId = NETWORKS[selectedNetwork].chainId;
-      await switchNetwork(sourceChainId);
+      await switchNetwork(selectedNetwork);
 
       // Step 2: Approve USDC
       setPaymentStep('Building approval transaction...');
@@ -136,13 +335,19 @@ export default function PayInvoice() {
 
       setPaymentStep('Please approve USDC spending...');
       const approvalTx = await walletClient.sendTransaction({
-        to: approvalData.to,
-        data: approvalData.data,
+        to: approvalData.to as `0x${string}`,
+        data: approvalData.data as `0x${string}`,
+        account: address as `0x${string}`,
+        chain: undefined,
+        kzg: undefined,
       });
       console.log('Approval transaction sent:', approvalTx);
 
       setPaymentStep('Waiting for approval confirmation...');
-      const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approvalTx });
+      const approvalReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: approvalTx,
+        timeout: 120_000 // 2 minute timeout
+      });
       console.log('Approval confirmed:', approvalReceipt);
 
       // Step 3: Burn USDC
@@ -156,37 +361,43 @@ export default function PayInvoice() {
         sourceNetwork: selectedNetwork,
         destinationNetwork: destinationNetwork,
         amount: amount,
-        recipientAddress: invoice.recipientAddress
+        destinationAddress: invoice.recipientAddress
       });
 
       setPaymentStep('Please confirm USDC burn...');
       const burnTx = await walletClient.sendTransaction({
-        to: burnData.to,
-        data: burnData.data,
+        to: burnData.to as `0x${string}`,
+        data: burnData.data as `0x${string}`,
+        account: address as `0x${string}`,
+        chain: undefined,
+        kzg: undefined,
       });
       console.log('Burn transaction sent:', burnTx);
 
       setPaymentStep('Waiting for burn confirmation...');
-      const burnReceipt = await publicClient.waitForTransactionReceipt({ hash: burnTx });
+      const burnReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: burnTx,
+        timeout: 120_000 // 2 minute timeout
+      });
       console.log('Burn confirmed:', burnReceipt);
 
       // Step 4: Get attestation
       setPaymentStep('Retrieving attestation from Circle...');
-      const attestationData = await callServer('/cctp/attestation', {
-        transactionHash: burnTx,
+      const attestationData = await callServerGet('/cctp/attestation', {
+        txHash: burnTx,
         sourceNetwork: selectedNetwork
       });
       console.log('Attestation retrieved:', attestationData);
 
       // Step 5: Switch to destination network
       setPaymentStep('Switching to destination network...');
-      const destChainId = NETWORKS[destinationNetwork].chainId;
-      await switchNetwork(destChainId);
+      await switchNetwork(destinationNetwork);
 
       // Create wallet client for destination network
       const destWalletClient = createWalletClient({
-        chain: undefined,
-        transport: custom((window as any).ethereum)
+        chain: { id: parseInt(NETWORKS[destinationNetwork].chainId, 16), name: NETWORKS[destinationNetwork].displayName } as any,
+        transport: custom((window as any).ethereum),
+        account: address as `0x${string}`,
       });
 
       // Step 6: Mint USDC on destination
@@ -199,13 +410,19 @@ export default function PayInvoice() {
 
       setPaymentStep('Please confirm USDC mint...');
       const mintTx = await destWalletClient.sendTransaction({
-        to: mintData.to,
-        data: mintData.data,
+        to: mintData.to as `0x${string}`,
+        data: mintData.data as `0x${string}`,
+        account: address as `0x${string}`,
+        chain: undefined,
+        kzg: undefined,
       });
       console.log('Mint transaction sent:', mintTx);
 
       setPaymentStep('Waiting for mint confirmation...');
-      const mintReceipt = await publicClient.waitForTransactionReceipt({ hash: mintTx });
+      const mintReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: mintTx,
+        timeout: 120_000 // 2 minute timeout
+      });
       console.log('Mint confirmed:', mintReceipt);
 
       // Step 7: Update invoice status
@@ -217,7 +434,9 @@ export default function PayInvoice() {
         receiveTxHash: mintTx,
         receiveNetwork: destinationNetwork,
         paidAt: new Date().toISOString(),
-        paidBy: address
+        paidBy: address,
+        attestationMessage: attestationData.message,
+        attestationSignature: attestationData.attestation
       });
 
       setSuccess(`Payment successful! Paid ${invoice.subtotal} USDC via CCTP transfer.`);
@@ -230,7 +449,44 @@ export default function PayInvoice() {
 
     } catch (error) {
       console.error('Payment error:', error);
-      setError(`Payment failed: ${error.message}`);
+      
+      let errorMessage = '';
+      
+      // Handle specific error types
+      if (error.message.includes('User rejected')) {
+        errorMessage = 'Transaction was rejected by user';
+      } else if (error.message.includes('Timed out while waiting')) {
+        errorMessage = 'Transaction confirmation timed out. The transaction may still be processing. Please check your wallet and try refreshing the page.';
+      } else if (error.message.includes('Unrecognized chain ID') || error.message.includes('add it manually')) {
+        errorMessage = `Network error: ${error.message}. Please add the required network to your wallet manually.`;
+      } else if (error.message.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for transaction (including gas fees)';
+      } else {
+        errorMessage = error.message || 'Unknown error occurred';
+      }
+      
+      // If we have a burn transaction but failed later, save the burn details for retry
+      if (typeof burnTx === 'string' && burnTx.startsWith('0x')) {
+        console.log('Saving burn transaction details for retry...');
+        updateInvoice(invoice.id, {
+          status: 'issued', // Keep as issued since payment not complete
+          paymentTxHash: burnTx,
+          paymentNetwork: selectedNetwork,
+          paidBy: address,
+          lastFailedStep: paymentStep || 'Unknown step'
+        });
+        
+        // Reload the invoice to show the retry button
+        const updatedInvoice = getInvoice(invoice.id);
+        if (updatedInvoice) {
+          setInvoice(updatedInvoice);
+        }
+        
+        setError(`Payment failed at: ${paymentStep}. Your burn transaction (${burnTx}) was successful. You can retry the minting process without losing your USDC. Error: ${errorMessage}`);
+      } else {
+        setError(`Payment failed: ${errorMessage}`);
+      }
+      
       setPaymentStep('');
     } finally {
       setPaying(false);
@@ -453,10 +709,31 @@ export default function PayInvoice() {
                       </Alert>
                     )}
 
+                    {/* Retry Button for failed transfers */}
+                    {invoice.paymentTxHash && !invoice.receiveTxHash && (
+                      <Alert>
+                        <AlertDescription className="mb-4">
+                          <div className="text-amber-700">
+                            ⚠️ Previous payment was partially completed. Your burn transaction ({invoice.paymentTxHash.slice(0, 10)}...) was successful.
+                            You can retry minting without losing USDC.
+                            {invoice.lastFailedStep && ` Last failed step: ${invoice.lastFailedStep}`}
+                          </div>
+                        </AlertDescription>
+                        <Button 
+                          onClick={handleRetryMint}
+                          disabled={paying || !isConnected}
+                          className="w-full mt-2"
+                          variant="outline"
+                        >
+                          {paying ? 'Retrying Mint...' : 'Retry Minting (Complete Payment)'}
+                        </Button>
+                      </Alert>
+                    )}
+
                     {/* Pay Button */}
                     <Button 
                       onClick={handlePayment}
-                      disabled={paying || !isConnected || !invoice.recipientAddress}
+                      disabled={paying || !isConnected || !invoice.recipientAddress || (invoice.paymentTxHash && !invoice.receiveTxHash)}
                       className="w-full"
                       size="lg"
                     >

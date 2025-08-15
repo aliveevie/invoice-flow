@@ -27,6 +27,9 @@ export interface Invoice {
   receiveNetwork?: string;
   paidAt?: string;
   paidBy?: string;
+  attestationMessage?: string;
+  attestationSignature?: string;
+  lastFailedStep?: string;
 }
 
 const STORAGE_KEY = 'invoices';

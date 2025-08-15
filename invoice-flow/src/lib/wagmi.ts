@@ -16,8 +16,20 @@ const optimismSepolia = {
   network: 'optimism-sepolia',
   nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://sepolia.optimism.io'] },
-    public: { http: ['https://sepolia.optimism.io'] },
+    default: { 
+      http: [
+        'https://sepolia.optimism.io',
+        'https://optimism-sepolia.blockpi.network/v1/rpc/public',
+        'https://optimism-sepolia-rpc.publicnode.com'
+      ] 
+    },
+    public: { 
+      http: [
+        'https://sepolia.optimism.io',
+        'https://optimism-sepolia.blockpi.network/v1/rpc/public',
+        'https://optimism-sepolia-rpc.publicnode.com'
+      ] 
+    },
   },
   blockExplorers: {
     default: { name: 'Optimism Sepolia', url: 'https://sepolia-optimism.etherscan.io' },
@@ -31,8 +43,20 @@ const arbitrumSepolia = {
   network: 'arbitrum-sepolia',
   nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] },
-    public: { http: ['https://sepolia-rollup.arbitrum.io/rpc'] },
+    default: { 
+      http: [
+        'https://sepolia-rollup.arbitrum.io/rpc',
+        'https://arbitrum-sepolia.blockpi.network/v1/rpc/public',
+        'https://arbitrum-sepolia-rpc.publicnode.com'
+      ] 
+    },
+    public: { 
+      http: [
+        'https://sepolia-rollup.arbitrum.io/rpc',
+        'https://arbitrum-sepolia.blockpi.network/v1/rpc/public',
+        'https://arbitrum-sepolia-rpc.publicnode.com'
+      ] 
+    },
   },
   blockExplorers: {
     default: { name: 'Arbitrum Sepolia', url: 'https://sepolia.arbiscan.io' },
@@ -46,8 +70,20 @@ const baseSepolia = {
   network: 'base-sepolia',
   nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://sepolia.base.org'] },
-    public: { http: ['https://sepolia.base.org'] },
+    default: { 
+      http: [
+        'https://sepolia.base.org',
+        'https://base-sepolia.blockpi.network/v1/rpc/public',
+        'https://base-sepolia-rpc.publicnode.com'
+      ] 
+    },
+    public: { 
+      http: [
+        'https://sepolia.base.org',
+        'https://base-sepolia.blockpi.network/v1/rpc/public',
+        'https://base-sepolia-rpc.publicnode.com'
+      ] 
+    },
   },
   blockExplorers: {
     default: { name: 'Base Sepolia', url: 'https://sepolia.basescan.org' },
@@ -61,8 +97,20 @@ const polygonAmoy = {
   network: 'polygon-amoy',
   nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://rpc-amoy.polygon.technology'] },
-    public: { http: ['https://rpc-amoy.polygon.technology'] },
+    default: { 
+      http: [
+        'https://rpc-amoy.polygon.technology',
+        'https://polygon-amoy.blockpi.network/v1/rpc/public',
+        'https://polygon-amoy-bor-rpc.publicnode.com'
+      ] 
+    },
+    public: { 
+      http: [
+        'https://rpc-amoy.polygon.technology',
+        'https://polygon-amoy.blockpi.network/v1/rpc/public',
+        'https://polygon-amoy-bor-rpc.publicnode.com'
+      ] 
+    },
   },
   blockExplorers: {
     default: { name: 'Polygon Amoy', url: 'https://www.oklink.com/amoy' },
