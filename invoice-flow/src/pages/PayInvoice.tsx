@@ -224,26 +224,98 @@ export default function PayInvoice() {
       });
       console.log('Attestation retrieved for retry:', attestationData);
 
-      // Switch to destination network
-      setPaymentStep('Switching to destination network...');
-      await switchNetwork(destinationNetwork);
-
-      // Create wallet client for destination network
-      const destWalletClient = createWalletClient({
-        chain: { id: parseInt(NETWORKS[destinationNetwork].chainId, 16), name: NETWORKS[destinationNetwork].displayName } as any,
-        transport: custom((window as any).ethereum),
-        account: address as `0x${string}`,
-      });
-
-      // Mint USDC on destination
+      // Mint USDC on destination - following testcctp.tsx pattern
       setPaymentStep('Building mint transaction...');
       const mintData = await callServer('/cctp/mint', {
         destinationNetwork: destinationNetwork,
         message: attestationData.message,
         attestation: attestationData.attestation
       });
-
-      setPaymentStep('Please confirm USDC mint...');
+      console.log(`Mint built: to=${mintData.to}, data=${mintData.data}`);
+      
+      // Ensure wallet is on destination network for mint
+      const destNetwork = NETWORKS[destinationNetwork];
+      setPaymentStep('Checking current chain...');
+      const currentChainForMint = await walletClient.request({ 
+        method: "eth_chainId" as any,
+        params: []
+      });
+      console.log(`Current chain: ${currentChainForMint}`);
+      
+      if (String(currentChainForMint).toLowerCase() !== destNetwork.chainId.toLowerCase()) {
+        setPaymentStep(`Switching to ${destNetwork.displayName}...`);
+        try {
+          await walletClient.request({
+            method: "wallet_switchEthereumChain" as any,
+            params: [{ chainId: destNetwork.chainId }],
+          });
+          console.log(`Successfully switched to ${destNetwork.displayName}`);
+          
+          // Wait a moment for the switch to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify the switch
+          const newChain = await walletClient.request({ 
+            method: "eth_chainId" as any,
+            params: []
+          });
+          console.log(`New chain after switch: ${newChain}`);
+          
+          if (String(newChain).toLowerCase() !== destNetwork.chainId.toLowerCase()) {
+            throw new Error(`Chain switch failed. Please manually switch to ${destNetwork.displayName} and retry.`);
+          }
+          console.log(`Confirmed on ${destNetwork.displayName}, proceeding with mint...`);
+        } catch (err: any) {
+          // If the chain doesn't exist, try to add it
+          if (err.message.includes('Unrecognized chain ID') || err.code === 4902) {
+            console.log(`Attempting to add ${destNetwork.displayName} to wallet...`);
+            try {
+              await walletClient.request({
+                method: 'wallet_addEthereumChain' as any,
+                params: [
+                  {
+                    chainId: destNetwork.chainId,
+                    chainName: destNetwork.displayName,
+                    nativeCurrency: {
+                      name: 'ETH',
+                      symbol: 'ETH',
+                      decimals: 18,
+                    },
+                    rpcUrls: [getNetworkRpcUrl(destinationNetwork)],
+                    blockExplorerUrls: [getNetworkExplorerUrl(destinationNetwork)],
+                  },
+                ],
+              });
+              console.log(`Successfully added ${destNetwork.displayName} to wallet`);
+              
+              // Now try to switch again
+              await walletClient.request({
+                method: "wallet_switchEthereumChain" as any,
+                params: [{ chainId: destNetwork.chainId }],
+              });
+              console.log(`Successfully switched to ${destNetwork.displayName} after adding`);
+              
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (addError) {
+              console.error(`Failed to add chain: ${addError.message}`);
+              throw new Error(`Failed to add ${destNetwork.displayName} to wallet. Please add it manually and retry.`);
+            }
+          } else {
+            throw new Error(`Chain switch error: ${err.message}. Please switch to ${destNetwork.displayName} manually and retry.`);
+          }
+        }
+      } else {
+        console.log(`Already on ${destNetwork.displayName}, proceeding with mint...`);
+      }
+      
+      setPaymentStep('Sending mint transaction...');
+      // Create a new wallet client for destination network to avoid chain mismatch
+      const destWalletClient = createWalletClient({
+        chain: { id: parseInt(destNetwork.chainId, 16), name: destNetwork.displayName } as any,
+        transport: custom((window as any).ethereum),
+        account: address as `0x${string}`,
+      });
+      
       const mintTx = await destWalletClient.sendTransaction({
         to: mintData.to as `0x${string}`,
         data: mintData.data as `0x${string}`,
@@ -251,14 +323,8 @@ export default function PayInvoice() {
         chain: undefined,
         kzg: undefined,
       });
-      console.log('Mint transaction sent:', mintTx);
-
-      setPaymentStep('Waiting for mint confirmation...');
-      const mintReceipt = await publicClient.waitForTransactionReceipt({ 
-        hash: mintTx,
-        timeout: 120_000 // 2 minute timeout
-      });
-      console.log('Mint confirmed:', mintReceipt);
+      console.log(`Mint tx: ${mintTx}`);
+      console.log(`Success: USDC transferred ${invoice.paymentNetwork || selectedNetwork} -> ${destNetwork.displayName}`);
 
       // Update invoice status
       setPaymentStep('Updating invoice status...');
@@ -365,7 +431,7 @@ export default function PayInvoice() {
       });
 
       setPaymentStep('Please confirm USDC burn...');
-      const burnTx = await walletClient.sendTransaction({
+      burnTx = await walletClient.sendTransaction({
         to: burnData.to as `0x${string}`,
         data: burnData.data as `0x${string}`,
         account: address as `0x${string}`,
@@ -381,6 +447,21 @@ export default function PayInvoice() {
       });
       console.log('Burn confirmed:', burnReceipt);
 
+      // Save burn transaction immediately for retry capability
+      console.log('Saving burn transaction for potential retry...');
+      updateInvoice(invoice.id, {
+        paymentTxHash: burnTx,
+        paymentNetwork: selectedNetwork,
+        paidBy: address,
+        lastFailedStep: undefined // Clear any previous failed step
+      });
+      
+      // Update local invoice state to show retry button if next steps fail
+      const updatedInvoice = getInvoice(invoice.id);
+      if (updatedInvoice) {
+        setInvoice(updatedInvoice);
+      }
+
       // Step 4: Get attestation
       setPaymentStep('Retrieving attestation from Circle...');
       const attestationData = await callServerGet('/cctp/attestation', {
@@ -389,26 +470,98 @@ export default function PayInvoice() {
       });
       console.log('Attestation retrieved:', attestationData);
 
-      // Step 5: Switch to destination network
-      setPaymentStep('Switching to destination network...');
-      await switchNetwork(destinationNetwork);
-
-      // Create wallet client for destination network
-      const destWalletClient = createWalletClient({
-        chain: { id: parseInt(NETWORKS[destinationNetwork].chainId, 16), name: NETWORKS[destinationNetwork].displayName } as any,
-        transport: custom((window as any).ethereum),
-        account: address as `0x${string}`,
-      });
-
-      // Step 6: Mint USDC on destination
+      // Step 5: Switch to destination network and mint
       setPaymentStep('Building mint transaction...');
       const mintData = await callServer('/cctp/mint', {
         destinationNetwork: destinationNetwork,
         message: attestationData.message,
         attestation: attestationData.attestation
       });
-
-      setPaymentStep('Please confirm USDC mint...');
+      console.log(`Mint built: to=${mintData.to}, data=${mintData.data}`);
+      
+      // Ensure wallet is on destination network for mint
+      const destNetwork = NETWORKS[destinationNetwork];
+      setPaymentStep('Checking current chain...');
+      const currentChainForMint = await walletClient.request({ 
+        method: "eth_chainId" as any,
+        params: []
+      });
+      console.log(`Current chain: ${currentChainForMint}`);
+      
+      if (String(currentChainForMint).toLowerCase() !== destNetwork.chainId.toLowerCase()) {
+        setPaymentStep(`Switching to ${destNetwork.displayName}...`);
+        try {
+          await walletClient.request({
+            method: "wallet_switchEthereumChain" as any,
+            params: [{ chainId: destNetwork.chainId }],
+          });
+          console.log(`Successfully switched to ${destNetwork.displayName}`);
+          
+          // Wait a moment for the switch to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify the switch
+          const newChain = await walletClient.request({ 
+            method: "eth_chainId" as any,
+            params: []
+          });
+          console.log(`New chain after switch: ${newChain}`);
+          
+          if (String(newChain).toLowerCase() !== destNetwork.chainId.toLowerCase()) {
+            throw new Error(`Chain switch failed. Please manually switch to ${destNetwork.displayName} and retry.`);
+          }
+          console.log(`Confirmed on ${destNetwork.displayName}, proceeding with mint...`);
+        } catch (err: any) {
+          // If the chain doesn't exist, try to add it
+          if (err.message.includes('Unrecognized chain ID') || err.code === 4902) {
+            console.log(`Attempting to add ${destNetwork.displayName} to wallet...`);
+            try {
+              await walletClient.request({
+                method: 'wallet_addEthereumChain' as any,
+                params: [
+                  {
+                    chainId: destNetwork.chainId,
+                    chainName: destNetwork.displayName,
+                    nativeCurrency: {
+                      name: 'ETH',
+                      symbol: 'ETH',
+                      decimals: 18,
+                    },
+                    rpcUrls: [getNetworkRpcUrl(destinationNetwork)],
+                    blockExplorerUrls: [getNetworkExplorerUrl(destinationNetwork)],
+                  },
+                ],
+              });
+              console.log(`Successfully added ${destNetwork.displayName} to wallet`);
+              
+              // Now try to switch again
+              await walletClient.request({
+                method: "wallet_switchEthereumChain" as any,
+                params: [{ chainId: destNetwork.chainId }],
+              });
+              console.log(`Successfully switched to ${destNetwork.displayName} after adding`);
+              
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (addError) {
+              console.error(`Failed to add chain: ${addError.message}`);
+              throw new Error(`Failed to add ${destNetwork.displayName} to wallet. Please add it manually and retry.`);
+            }
+          } else {
+            throw new Error(`Chain switch error: ${err.message}. Please switch to ${destNetwork.displayName} manually and retry.`);
+          }
+        }
+      } else {
+        console.log(`Already on ${destNetwork.displayName}, proceeding with mint...`);
+      }
+      
+      setPaymentStep('Sending mint transaction...');
+      // Create a new wallet client for destination network to avoid chain mismatch
+      const destWalletClient = createWalletClient({
+        chain: { id: parseInt(destNetwork.chainId, 16), name: destNetwork.displayName } as any,
+        transport: custom((window as any).ethereum),
+        account: address as `0x${string}`,
+      });
+      
       const mintTx = await destWalletClient.sendTransaction({
         to: mintData.to as `0x${string}`,
         data: mintData.data as `0x${string}`,
@@ -416,14 +569,8 @@ export default function PayInvoice() {
         chain: undefined,
         kzg: undefined,
       });
-      console.log('Mint transaction sent:', mintTx);
-
-      setPaymentStep('Waiting for mint confirmation...');
-      const mintReceipt = await publicClient.waitForTransactionReceipt({ 
-        hash: mintTx,
-        timeout: 120_000 // 2 minute timeout
-      });
-      console.log('Mint confirmed:', mintReceipt);
+      console.log(`Mint tx: ${mintTx}`);
+      console.log(`Success: USDC transferred ${NETWORKS[selectedNetwork].displayName} -> ${destNetwork.displayName}`);
 
       // Step 7: Update invoice status
       setPaymentStep('Updating invoice status...');
