@@ -16,9 +16,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useInvoices } from '@/hooks/use-invoices';
 
 const createInvoiceSchema = z.object({
-  customerEmail: z.string().email('Invalid email address'),
+  customerEmail: z.string().min(1, 'Email is required').email('Invalid email address'),
   customerName: z.string().min(1, 'Customer name is required'),
   currencyType: z.enum(['fiat', 'usdc']),
   fiatCurrency: z.string().optional(),
@@ -27,7 +28,7 @@ const createInvoiceSchema = z.object({
     quantity: z.number().min(1, 'Quantity must be at least 1'),
     unitPrice: z.number().min(0, 'Price must be positive'),
   })).min(1, 'At least one line item is required'),
-  dueDate: z.date(),
+  dueDate: z.date({ required_error: 'Due date is required' }),
   memo: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -39,6 +40,7 @@ export function CreateInvoiceForm() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { createInvoice } = useInvoices();
   
   const form = useForm<CreateInvoiceForm>({
     resolver: zodResolver(createInvoiceSchema),
@@ -79,35 +81,46 @@ export function CreateInvoiceForm() {
   };
 
   const onSubmit = async (data: CreateInvoiceForm) => {
+    console.log('onSubmit called with data:', data);
+    console.log('Form is valid:', form.formState.isValid);
+    console.log('Form errors:', form.formState.errors);
+    
     setIsLoading(true);
     
     try {
-      // Generate a mock invoice ID
-      const invoiceId = `INV-${Date.now().toString().slice(-6)}`;
+      console.log('Form data submitted:', data);
+      console.log('Subtotal calculated:', subtotal);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate random success/failure for demo
-      const success = Math.random() > 0.1; // 90% success rate
-      
-      if (!success) {
-        throw new Error('Failed to create invoice. Please try again.');
-      }
-
+      // Create invoice data
       const invoiceData = {
-        id: invoiceId,
-        ...data,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        currencyType: data.currencyType,
+        fiatCurrency: data.fiatCurrency,
+        lineItems: data.lineItems.map(item => ({
+          description: item.description || 'Untitled Item',
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice || 0
+        })),
         subtotal: subtotal,
-        createdAt: new Date().toISOString(),
-        status: 'issued',
+        dueDate: data.dueDate.toISOString(),
+        memo: data.memo || '',
+        tags: data.tags || [],
+        status: 'issued' as const,
+        chain: data.currencyType === 'usdc' ? 'Ethereum' : undefined,
       };
 
-      console.log('Invoice created successfully:', invoiceData);
+      console.log('Invoice data to save:', invoiceData);
+
+      // Save to localStorage using the custom hook
+      const newInvoice = createInvoice(invoiceData);
+
+      console.log('Invoice created successfully:', newInvoice);
+      console.log('Current invoices in localStorage:', localStorage.getItem('invoices'));
 
       toast({
         title: "Invoice Created Successfully! 🎉",
-        description: `Invoice ${invoiceId} has been created and sent to ${data.customerEmail}`,
+        description: `Invoice ${newInvoice.id} has been created and saved.`,
         duration: 5000,
       });
 
@@ -132,14 +145,33 @@ export function CreateInvoiceForm() {
     setIsLoading(true);
     
     try {
-      const invoiceId = `DRAFT-${Date.now().toString().slice(-6)}`;
+      const data = form.getValues();
       
-      // Simulate API call for saving draft
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Create draft invoice data
+      const draftData = {
+        customerName: data.customerName || 'Draft Invoice',
+        customerEmail: data.customerEmail || 'draft@example.com',
+        currencyType: data.currencyType,
+        fiatCurrency: data.fiatCurrency,
+        lineItems: (data.lineItems || [{ description: 'Draft item', quantity: 1, unitPrice: 0 }]).map(item => ({
+          description: item.description || 'Untitled Item',
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice || 0
+        })),
+        subtotal: subtotal,
+        dueDate: data.dueDate || new Date(),
+        memo: data.memo || '',
+        tags: data.tags || [],
+        status: 'draft' as const,
+        chain: data.currencyType === 'usdc' ? 'Ethereum' : undefined,
+      };
+
+      // Save draft to localStorage
+      const draftInvoice = createInvoice(draftData);
       
       toast({
         title: "Draft Saved",
-        description: `Invoice draft ${invoiceId} has been saved successfully.`,
+        description: `Invoice draft ${draftInvoice.id} has been saved successfully.`,
       });
       
     } catch (error) {
@@ -496,6 +528,7 @@ export function CreateInvoiceForm() {
                 </>
               )}
             </Button>
+
             <Button 
               type="submit" 
               variant="hero"
