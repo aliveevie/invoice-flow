@@ -19,6 +19,13 @@ export interface Invoice {
   createdAt: string;
   updatedAt: string;
   chain?: string;
+  // Payment-specific fields
+  paymentTxHash?: string;
+  paymentNetwork?: string;
+  receiveTxHash?: string;
+  receiveNetwork?: string;
+  paidAt?: string;
+  paidBy?: string;
 }
 
 const STORAGE_KEY = 'invoices';

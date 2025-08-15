@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Download, Filter, Eye, MoreHorizontal, Loader2 } from 'lucide-react';
+import { Plus, Search, Download, Filter, Eye, MoreHorizontal, Loader2, Link2 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useInvoices, type Invoice } from '@/hooks/use-invoices';
@@ -59,6 +59,24 @@ export default function Invoices() {
   const handleDeleteInvoice = (id: string) => {
     if (window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
       deleteInvoice(id);
+    }
+  };
+
+  const handleCopyPaymentLink = async (invoiceId: string) => {
+    const paymentUrl = `${window.location.origin}/pay-invoice/${invoiceId}`;
+    try {
+      await navigator.clipboard.writeText(paymentUrl);
+      // You might want to show a toast here
+      console.log('Payment link copied:', paymentUrl);
+    } catch (error) {
+      console.error('Failed to copy payment link:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = paymentUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
     }
   };
 
@@ -290,7 +308,8 @@ export default function Invoices() {
                                   <Download className="w-4 h-4" />
                                   Download CSV
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopyPaymentLink(invoice.id)}>
+                                  <Link2 className="w-4 h-4" />
                                   Copy Payment Link
                                 </DropdownMenuItem>
                                 <DropdownMenuItem>

@@ -12,6 +12,8 @@ import Invoices from "./pages/Invoices";
 import CreateInvoice from "./pages/CreateInvoice";
 import TestCctpPage from "./pages/testcctp";
 import Settings from "./pages/Settings";
+import PayInvoice from "./pages/PayInvoice";
+import InvoicePaid from "./pages/InvoicePaid";
 import NotFound from "./pages/NotFound";
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -31,6 +33,8 @@ const App = () => (
               <Route path="/invoices/new" element={<CreateInvoice />} />
               <Route path="/testcctp" element={<TestCctpPage />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/pay-invoice/:invoiceId" element={<PayInvoice />} />
+              <Route path="/invoice-paid/:invoiceId" element={<InvoicePaid />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
