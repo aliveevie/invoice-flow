@@ -84,7 +84,7 @@ export default function TestCctpPage() {
 
   const callServer = useCallback(async (method: string, path: string, body?: any) => {
     try {
-      const res = await fetch(`http://localhost:5454${path}`, {
+      const res = await fetch(`https://invoice-flow-server.vercel.app${path}`, {
         method,
         headers: { "Content-Type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,

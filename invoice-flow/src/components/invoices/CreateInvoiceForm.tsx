@@ -53,7 +53,7 @@ const createInvoiceSchema = z.discriminatedUnion('currencyType', [
 
 type CreateInvoiceForm = z.infer<typeof createInvoiceSchema>;
 
-const API_BASE_URL = 'http://localhost:5454';
+const API_BASE_URL = 'https://invoice-flow-server.vercel.app';
 
 export function CreateInvoiceForm() {
   const [currentTag, setCurrentTag] = useState('');

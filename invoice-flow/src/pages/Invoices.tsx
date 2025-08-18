@@ -22,7 +22,7 @@ const statusConfig = {
   cancelled: { variant: 'outline' as const, color: 'text-muted-foreground' },
 };
 
-const API_BASE_URL = 'http://localhost:5454';
+const API_BASE_URL = 'https://invoice-flow-server.vercel.app';
 
 export default function Invoices() {
   const { invoices, isLoading, searchInvoices, filterInvoices, deleteInvoice, clearAllInvoices } = useInvoices();

@@ -21,7 +21,7 @@ const NETWORKS = {
   polygonAmoy: { name: "Polygon Amoy", chainId: "0x13881", displayName: "Polygon Amoy Testnet" }
 };
 
-const API_BASE_URL = 'http://localhost:5454';
+const API_BASE_URL = 'https://invoice-flow-server.vercel.app';
 
 const getNetworkRpcUrl = (networkKey: string) => {
   const rpcUrls = {
