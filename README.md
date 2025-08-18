@@ -140,7 +140,7 @@ sequenceDiagram
 ### Frontend Setup
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/invoice-flow.git
+git clone https://github.com/aliveevie/invoice-flow
 cd invoice-flow/invoice-flow
 
 # Install dependencies
@@ -315,9 +315,7 @@ cd server && npm run test
 npm run test:integration
 ```
 
-## 🤝 Contributing
 
-We welcome contributions to Invoice Flow! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ### Development Setup
 1. Fork the repository
