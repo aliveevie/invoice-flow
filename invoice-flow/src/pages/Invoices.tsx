@@ -6,11 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Download, Filter, Eye, MoreHorizontal, Loader2, Link2 } from 'lucide-react';
+import { Plus, Search, Download, Filter, Eye, MoreHorizontal, Loader2, Link2, Mail } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useInvoices, type Invoice } from '@/hooks/use-invoices';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import axios from 'axios';
 
 const statusConfig = {
   draft: { variant: 'secondary' as const, color: 'text-muted-foreground' },
@@ -20,12 +22,16 @@ const statusConfig = {
   cancelled: { variant: 'outline' as const, color: 'text-muted-foreground' },
 };
 
+const API_BASE_URL = 'http://localhost:5454';
+
 export default function Invoices() {
   const { invoices, isLoading, searchInvoices, filterInvoices, deleteInvoice, clearAllInvoices } = useInvoices();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const location = useLocation();
+  const { toast } = useToast();
 
   // Force refresh when navigating back from create invoice
   useEffect(() => {
@@ -85,6 +91,71 @@ export default function Invoices() {
       clearAllInvoices();
       // Force a page reload to ensure all components are refreshed
       window.location.reload();
+    }
+  };
+
+  const handleSendReminder = async (invoice: Invoice) => {
+    // Check if invoice can have reminder sent
+    if (invoice.status === 'paid') {
+      toast({
+        title: "Cannot Send Reminder",
+        description: "This invoice has already been paid.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (invoice.status === 'cancelled') {
+      toast({
+        title: "Cannot Send Reminder",
+        description: "Cannot send reminder for cancelled invoice.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (invoice.status === 'draft') {
+      toast({
+        title: "Cannot Send Reminder",
+        description: "Cannot send reminder for draft invoice. Please issue the invoice first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSendingReminder(invoice.id);
+
+    try {
+      const baseUrl = window.location.origin;
+      
+      console.log('Sending reminder email for:', invoice.id);
+      
+      const response = await axios.post(`${API_BASE_URL}/invoice/send-reminder`, {
+        invoice,
+        baseUrl
+      });
+      
+      if (response.data.success) {
+        const isOverdue = response.data.isOverdue;
+        
+        toast({
+          title: `${isOverdue ? 'Overdue' : 'Payment'} Reminder Sent! 📧`,
+          description: `${isOverdue ? 'Overdue payment' : 'Payment reminder'} sent to ${invoice.customerEmail}`,
+          duration: 5000,
+        });
+      } else {
+        throw new Error('Failed to send reminder email');
+      }
+    } catch (error) {
+      console.error('Error sending reminder email:', error);
+      toast({
+        title: "Failed to Send Reminder",
+        description: error.response?.data?.error || error.message || "Failed to send reminder email. Please try again.",
+        variant: "destructive",
+        duration: 8000,
+      });
+    } finally {
+      setSendingReminder(null);
     }
   };
 
@@ -317,8 +388,26 @@ export default function Invoices() {
                                   <Link2 className="w-4 h-4" />
                                   Copy Payment Link
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  Send Reminder
+                                <DropdownMenuItem 
+                                  onClick={() => handleSendReminder(invoice)}
+                                  disabled={
+                                    sendingReminder === invoice.id || 
+                                    invoice.status === 'paid' || 
+                                    invoice.status === 'cancelled' ||
+                                    invoice.status === 'draft'
+                                  }
+                                >
+                                  {sendingReminder === invoice.id ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Sending...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Mail className="w-4 h-4" />
+                                      Send Reminder
+                                    </>
+                                  )}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   className="text-destructive"

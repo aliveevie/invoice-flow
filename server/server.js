@@ -6,6 +6,8 @@ import {
   retrieveAttestation,
   receiveMessageMint,
   sendInvoiceEmail,
+  sendReminderEmail,
+  sendPaymentReceiptEmails,
 } from "./functions/index.js";
 import {
   USDC,
@@ -185,6 +187,94 @@ app.post("/invoice/send-email", async (req, res) => {
     return res.status(500).json({ 
       error: error?.message || String(error), 
       stage: "email.send" 
+    });
+  }
+});
+
+// Reminder email endpoint for sending payment reminders
+app.post("/invoice/send-reminder", async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ error: "Request body is required" });
+    }
+    
+    const { invoice, baseUrl } = req.body;
+    
+    if (!invoice) {
+      return res.status(400).json({ error: "Invoice data is required" });
+    }
+    
+    if (!invoice.customerEmail) {
+      return res.status(400).json({ error: "Customer email is required" });
+    }
+    
+    if (invoice.status === 'paid') {
+      return res.status(400).json({ error: "Cannot send reminder for paid invoice" });
+    }
+    
+    if (invoice.status === 'cancelled') {
+      return res.status(400).json({ error: "Cannot send reminder for cancelled invoice" });
+    }
+    
+    console.log(`[EMAIL] Sending reminder email for ${invoice.id} to ${invoice.customerEmail}`);
+    
+    const result = await sendReminderEmail(invoice, baseUrl);
+    
+    console.log(`[EMAIL] Successfully sent reminder email for ${invoice.id}`);
+    
+    return res.json({
+      success: true,
+      message: "Reminder email sent successfully",
+      ...result
+    });
+    
+  } catch (error) {
+    console.error(`[EMAIL] Error sending reminder email:`, error);
+    return res.status(500).json({ 
+      error: error?.message || String(error), 
+      stage: "reminder.send" 
+    });
+  }
+});
+
+// Payment receipt endpoint for sending payment confirmations to both parties
+app.post("/invoice/send-payment-receipt", async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ error: "Request body is required" });
+    }
+    
+    const { invoice, paymentDetails, baseUrl } = req.body;
+    
+    if (!invoice) {
+      return res.status(400).json({ error: "Invoice data is required" });
+    }
+    
+    if (!invoice.customerEmail || !invoice.issuerEmail) {
+      return res.status(400).json({ error: "Both customer and issuer emails are required" });
+    }
+    
+    if (invoice.status !== 'paid') {
+      return res.status(400).json({ error: "Invoice must be paid to send payment receipt" });
+    }
+    
+    console.log(`[EMAIL] Sending payment receipt emails for ${invoice.id} to both parties`);
+    
+    const result = await sendPaymentReceiptEmails(invoice, paymentDetails, baseUrl);
+    
+    console.log(`[EMAIL] Successfully sent payment receipt emails for ${invoice.id}`);
+    
+    return res.json({
+      success: true,
+      message: "Payment receipt emails sent successfully to both parties",
+      ...result
+    });
+    
+  } catch (error) {
+    console.error(`[EMAIL] Error sending payment receipt emails:`, error);
+    return res.status(500).json({ 
+      error: error?.message || String(error), 
+      stage: "payment-receipt.send" 
     });
   }
 });

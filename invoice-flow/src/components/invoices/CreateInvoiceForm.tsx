@@ -20,7 +20,9 @@ import { useInvoices } from '@/hooks/use-invoices';
 import axios from 'axios';
 
 const baseInvoiceSchema = z.object({
-  customerEmail: z.string().min(1, 'Email is required').email('Invalid email address'),
+  issuerName: z.string().min(1, 'Your name/company name is required'),
+  issuerEmail: z.string().min(1, 'Your email is required').email('Invalid email address'),
+  customerEmail: z.string().min(1, 'Customer email is required').email('Invalid email address'),
   customerName: z.string().min(1, 'Customer name is required'),
   lineItems: z.array(z.object({
     description: z.string().min(1, 'Description is required'),
@@ -151,6 +153,8 @@ export function CreateInvoiceForm() {
       
       // Create invoice data
       const invoiceData = {
+        issuerName: data.issuerName,
+        issuerEmail: data.issuerEmail,
         customerName: data.customerName,
         customerEmail: data.customerEmail,
         currencyType: data.currencyType,
@@ -185,7 +189,7 @@ export function CreateInvoiceForm() {
       if (emailSent) {
         toast({
           title: "Invoice Created & Sent Successfully! 🎉📧",
-          description: `Invoice ${newInvoice.id} has been created and emailed to ${newInvoice.customerEmail}`,
+          description: `Invoice ${newInvoice.id} has been created and emailed to both you and ${newInvoice.customerName}`,
           duration: 5000,
         });
       } else {
@@ -221,7 +225,9 @@ export function CreateInvoiceForm() {
       
       // Create draft invoice data
       const draftData = {
-        customerName: data.customerName || 'Draft Invoice',
+        issuerName: data.issuerName || 'Draft Company',
+        issuerEmail: data.issuerEmail || 'draft@company.com',
+        customerName: data.customerName || 'Draft Customer',
         customerEmail: data.customerEmail || 'draft@example.com',
         currencyType: data.currencyType,
         fiatCurrency: data.fiatCurrency,
@@ -268,8 +274,51 @@ export function CreateInvoiceForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Customer Information */}
+            {/* Issuer Information */}
             <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Your Information (Invoice Issuer)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="issuerName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Name/Company Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Your Company Name" 
+                          disabled={isLoading || isSendingEmail}
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="issuerEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Email *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="your-email@company.com" 
+                          disabled={isLoading || isSendingEmail}
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Customer Information */}
+            <Card className="lg:col-span-1">
               <CardHeader>
                 <CardTitle>Customer Information</CardTitle>
               </CardHeader>
@@ -279,7 +328,7 @@ export function CreateInvoiceForm() {
                   name="customerEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email *</FormLabel>
+                      <FormLabel>Customer Email *</FormLabel>
                       <FormControl>
                         <Input 
                           placeholder="customer@example.com" 
@@ -299,7 +348,7 @@ export function CreateInvoiceForm() {
                       <FormLabel>Customer Name *</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="Acme Corp" 
+                          placeholder="Customer Name" 
                           disabled={isLoading || isSendingEmail}
                           {...field} 
                         />
@@ -310,7 +359,9 @@ export function CreateInvoiceForm() {
                 />
               </CardContent>
             </Card>
+          </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Invoice Settings */}
             <Card>
               <CardHeader>

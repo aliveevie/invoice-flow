@@ -337,17 +337,42 @@ export default function PayInvoice() {
 
       // Update invoice status
       setPaymentStep('Updating invoice status...');
-      updateInvoice(invoice.id, {
-        status: 'paid',
+      const updatedInvoiceData = {
+        status: 'paid' as const,
         receiveTxHash: mintTx,
         receiveNetwork: invoice.preferredNetwork || destinationNetwork,
         paidAt: new Date().toISOString(),
         attestationMessage: attestationData.message,
         attestationSignature: attestationData.attestation,
         lastFailedStep: undefined // Clear the failed step
-      });
+      };
+      
+      updateInvoice(invoice.id, updatedInvoiceData);
 
-      setSuccess(`Payment completed! Your USDC transfer is now complete.`);
+      // Send payment receipt emails to both parties
+      setPaymentStep('Sending payment confirmations...');
+      try {
+        const updatedInvoice = { ...invoice, ...updatedInvoiceData };
+        const baseUrl = window.location.origin;
+        
+        await axios.post(`${API_BASE_URL}/invoice/send-payment-receipt`, {
+          invoice: updatedInvoice,
+          paymentDetails: {
+            paymentTxHash: invoice.paymentTxHash,
+            receiveTxHash: mintTx,
+            paymentNetwork: invoice.paymentNetwork,
+            receiveNetwork: invoice.preferredNetwork || destinationNetwork
+          },
+          baseUrl
+        });
+        
+        console.log('Payment receipt emails sent successfully to both parties');
+      } catch (emailError) {
+        console.error('Failed to send payment receipt emails:', emailError);
+        // Don't fail the payment process if email fails
+      }
+
+      setSuccess(`Payment completed! Your USDC transfer is now complete. Confirmation emails sent to both parties.`);
       setPaymentStep('Retry successful - payment completed!');
       
       // Redirect to success page after a delay
@@ -451,7 +476,7 @@ export default function PayInvoice() {
 
       setPaymentStep('Waiting for burn confirmation...');
       const burnReceipt = await publicClient.waitForTransactionReceipt({ 
-        hash: burnTx,
+        hash: burnTx as `0x${string}`,
         timeout: 120_000 // 2 minute timeout
       });
       console.log('Burn confirmed:', burnReceipt);
@@ -583,8 +608,8 @@ export default function PayInvoice() {
 
       // Step 7: Update invoice status
       setPaymentStep('Updating invoice status...');
-      updateInvoice(invoice.id, {
-        status: 'paid',
+      const updatedInvoiceData = {
+        status: 'paid' as const,
         paymentTxHash: burnTx,
         paymentNetwork: selectedNetwork,
         receiveTxHash: mintTx,
@@ -593,9 +618,34 @@ export default function PayInvoice() {
         paidBy: address,
         attestationMessage: attestationData.message,
         attestationSignature: attestationData.attestation
-      });
+      };
+      
+      updateInvoice(invoice.id, updatedInvoiceData);
 
-      setSuccess(`Payment successful! Paid ${invoice.subtotal} USDC via CCTP transfer.`);
+      // Step 8: Send payment receipt emails to both parties
+      setPaymentStep('Sending payment confirmations...');
+      try {
+        const updatedInvoice = { ...invoice, ...updatedInvoiceData };
+        const baseUrl = window.location.origin;
+        
+        await axios.post(`${API_BASE_URL}/invoice/send-payment-receipt`, {
+          invoice: updatedInvoice,
+          paymentDetails: {
+            paymentTxHash: burnTx,
+            receiveTxHash: mintTx,
+            paymentNetwork: selectedNetwork,
+            receiveNetwork: invoice.preferredNetwork || destinationNetwork
+          },
+          baseUrl
+        });
+        
+        console.log('Payment receipt emails sent successfully to both parties');
+      } catch (emailError) {
+        console.error('Failed to send payment receipt emails:', emailError);
+        // Don't fail the payment process if email fails
+      }
+
+      setSuccess(`Payment successful! Paid ${invoice.subtotal} USDC via CCTP transfer. Confirmation emails sent to both parties.`);
       setPaymentStep('Payment completed successfully!');
       
       // Redirect to success page after a delay
