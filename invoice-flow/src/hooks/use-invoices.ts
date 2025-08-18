@@ -7,6 +7,7 @@ export interface Invoice {
   currencyType: 'fiat' | 'usdc';
   fiatCurrency?: string;
   recipientAddress?: string; // Wallet address where USDC should be sent (required for USDC invoices)
+  preferredNetwork?: string; // Receiver's preferred network for USDC payments
   lineItems: Array<{
     description: string;
     quantity: number;

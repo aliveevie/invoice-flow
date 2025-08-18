@@ -73,6 +73,10 @@ export default function PayInvoice() {
       if (foundInvoice) {
         setInvoice(foundInvoice);
         console.log('Invoice found:', foundInvoice);
+        // Set destination network from invoice preferred network if available
+        if (foundInvoice.preferredNetwork) {
+          setDestinationNetwork(foundInvoice.preferredNetwork);
+        }
         // Clear any previous error when invoice is found
         if (error === 'Invoice not found') {
           setError('');
@@ -232,14 +236,14 @@ export default function PayInvoice() {
       // Mint USDC on destination - following testcctp.tsx pattern
       setPaymentStep('Building mint transaction...');
       const mintData = await callServer('/cctp/mint', {
-        destinationNetwork: destinationNetwork,
+        destinationNetwork: invoice.preferredNetwork || destinationNetwork,
         message: attestationData.message,
         attestation: attestationData.attestation
       });
       console.log(`Mint built: to=${mintData.to}, data=${mintData.data}`);
       
       // Ensure wallet is on destination network for mint
-      const destNetwork = NETWORKS[destinationNetwork];
+      const destNetwork = NETWORKS[invoice.preferredNetwork || destinationNetwork];
       setPaymentStep('Checking current chain...');
       const currentChainForMint = await walletClient.request({ 
         method: "eth_chainId" as any,
@@ -286,8 +290,8 @@ export default function PayInvoice() {
                       symbol: 'ETH',
                       decimals: 18,
                     },
-                    rpcUrls: [getNetworkRpcUrl(destinationNetwork)],
-                    blockExplorerUrls: [getNetworkExplorerUrl(destinationNetwork)],
+                    rpcUrls: [getNetworkRpcUrl(invoice.preferredNetwork || destinationNetwork)],
+                    blockExplorerUrls: [getNetworkExplorerUrl(invoice.preferredNetwork || destinationNetwork)],
                   },
                 ],
               });
@@ -336,7 +340,7 @@ export default function PayInvoice() {
       updateInvoice(invoice.id, {
         status: 'paid',
         receiveTxHash: mintTx,
-        receiveNetwork: destinationNetwork,
+        receiveNetwork: invoice.preferredNetwork || destinationNetwork,
         paidAt: new Date().toISOString(),
         attestationMessage: attestationData.message,
         attestationSignature: attestationData.attestation,
@@ -478,14 +482,14 @@ export default function PayInvoice() {
       // Step 5: Switch to destination network and mint
       setPaymentStep('Building mint transaction...');
       const mintData = await callServer('/cctp/mint', {
-        destinationNetwork: destinationNetwork,
+        destinationNetwork: invoice.preferredNetwork || destinationNetwork,
         message: attestationData.message,
         attestation: attestationData.attestation
       });
       console.log(`Mint built: to=${mintData.to}, data=${mintData.data}`);
       
       // Ensure wallet is on destination network for mint
-      const destNetwork = NETWORKS[destinationNetwork];
+      const destNetwork = NETWORKS[invoice.preferredNetwork || destinationNetwork];
       setPaymentStep('Checking current chain...');
       const currentChainForMint = await walletClient.request({ 
         method: "eth_chainId" as any,
@@ -532,8 +536,8 @@ export default function PayInvoice() {
                       symbol: 'ETH',
                       decimals: 18,
                     },
-                    rpcUrls: [getNetworkRpcUrl(destinationNetwork)],
-                    blockExplorerUrls: [getNetworkExplorerUrl(destinationNetwork)],
+                    rpcUrls: [getNetworkRpcUrl(invoice.preferredNetwork || destinationNetwork)],
+                    blockExplorerUrls: [getNetworkExplorerUrl(invoice.preferredNetwork || destinationNetwork)],
                   },
                 ],
               });
@@ -584,7 +588,7 @@ export default function PayInvoice() {
         paymentTxHash: burnTx,
         paymentNetwork: selectedNetwork,
         receiveTxHash: mintTx,
-        receiveNetwork: destinationNetwork,
+        receiveNetwork: invoice.preferredNetwork || destinationNetwork,
         paidAt: new Date().toISOString(),
         paidBy: address,
         attestationMessage: attestationData.message,
@@ -821,17 +825,13 @@ export default function PayInvoice() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Receive On Network:</label>
-                        <select 
-                          value={destinationNetwork} 
-                          onChange={(e) => setDestinationNetwork(e.target.value)}
-                          className="w-full p-2 border rounded"
-                          disabled={paying}
-                        >
-                          {Object.entries(NETWORKS).map(([key, network]) => (
-                            <option key={key} value={key}>{network.displayName}</option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-medium mb-2">Receive On Network (Receiver's Choice):</label>
+                        <div className="w-full p-2 border rounded bg-gray-50 text-gray-700">
+                          {invoice.preferredNetwork ? NETWORKS[invoice.preferredNetwork]?.displayName || invoice.preferredNetwork : 'Not specified'}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          This is set by the invoice issuer and cannot be changed
+                        </p>
                       </div>
                     </div>
 
@@ -894,7 +894,7 @@ export default function PayInvoice() {
 
                     <p className="text-sm text-gray-600 text-center">
                       This payment uses Circle's CCTP protocol for secure cross-chain USDC transfers.
-                      You will pay from {NETWORKS[selectedNetwork].displayName} and receive USDC on {NETWORKS[destinationNetwork].displayName}.
+                      You will pay from {NETWORKS[selectedNetwork].displayName} and USDC will be received on {NETWORKS[invoice.preferredNetwork || destinationNetwork]?.displayName || 'the receiver\'s preferred network'}.
                     </p>
                   </>
                 )}

@@ -36,6 +36,7 @@ const createInvoiceSchema = z.discriminatedUnion('currencyType', [
     currencyType: z.literal('fiat'),
     fiatCurrency: z.string().min(1, 'Fiat currency is required'),
     recipientAddress: z.string().optional(),
+    preferredNetwork: z.string().optional(),
   }),
   baseInvoiceSchema.extend({
     currencyType: z.literal('usdc'),
@@ -43,6 +44,7 @@ const createInvoiceSchema = z.discriminatedUnion('currencyType', [
     recipientAddress: z.string()
       .min(1, 'Recipient wallet address is required for USDC invoices')
       .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid wallet address format (must be 42 characters starting with 0x)'),
+    preferredNetwork: z.string().min(1, 'Preferred network is required for USDC invoices'),
   }),
 ]);
 
@@ -111,6 +113,7 @@ export function CreateInvoiceForm() {
         currencyType: data.currencyType,
         fiatCurrency: data.fiatCurrency,
         recipientAddress: data.recipientAddress,
+        preferredNetwork: data.preferredNetwork,
         lineItems: data.lineItems.map(item => ({
           description: item.description || 'Untitled Item',
           quantity: item.quantity || 1,
@@ -168,6 +171,7 @@ export function CreateInvoiceForm() {
         currencyType: data.currencyType,
         fiatCurrency: data.fiatCurrency,
         recipientAddress: data.recipientAddress,
+        preferredNetwork: data.preferredNetwork,
         lineItems: (data.lineItems || [{ description: 'Draft item', quantity: 1, unitPrice: 0 }]).map(item => ({
           description: item.description || 'Untitled Item',
           quantity: item.quantity || 1,
@@ -321,6 +325,37 @@ export function CreateInvoiceForm() {
                         </FormControl>
                         <p className="text-sm text-muted-foreground">
                           The wallet address where USDC payment will be received
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {watchedCurrencyType === 'usdc' && (
+                  <FormField
+                    control={form.control}
+                    name="preferredNetwork"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preferred Network for Receiving USDC *</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select preferred network" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="sepolia">Ethereum Sepolia Testnet</SelectItem>
+                            <SelectItem value="avalancheFuji">Avalanche Fuji Testnet</SelectItem>
+                            <SelectItem value="optimismSepolia">Optimism Sepolia Testnet</SelectItem>
+                            <SelectItem value="arbitrumSepolia">Arbitrum Sepolia Testnet</SelectItem>
+                            <SelectItem value="baseSepolia">Base Sepolia Testnet</SelectItem>
+                            <SelectItem value="polygonAmoy">Polygon Amoy Testnet</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-sm text-muted-foreground">
+                          The network where you prefer to receive USDC payments
                         </p>
                         <FormMessage />
                       </FormItem>
