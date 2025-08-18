@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useInvoices } from '@/hooks/use-invoices';
+import axios from 'axios';
 
 const baseInvoiceSchema = z.object({
   customerEmail: z.string().min(1, 'Email is required').email('Invalid email address'),
@@ -50,9 +51,12 @@ const createInvoiceSchema = z.discriminatedUnion('currencyType', [
 
 type CreateInvoiceForm = z.infer<typeof createInvoiceSchema>;
 
+const API_BASE_URL = 'http://localhost:5454';
+
 export function CreateInvoiceForm() {
   const [currentTag, setCurrentTag] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { createInvoice } = useInvoices();
@@ -95,6 +99,45 @@ export function CreateInvoiceForm() {
     form.setValue('tags', watchedTags.filter(t => t !== tag));
   };
 
+  const sendInvoiceEmail = async (invoice: any) => {
+    try {
+      setIsSendingEmail(true);
+      
+      // Get the base URL for the payment link
+      const baseUrl = window.location.origin;
+      
+      console.log('Sending invoice email for:', invoice.id);
+      
+      const response = await axios.post(`${API_BASE_URL}/invoice/send-email`, {
+        invoice,
+        baseUrl
+      });
+      
+      if (response.data.success) {
+        console.log('Email sent successfully:', response.data);
+        toast({
+          title: "Email Sent Successfully! 📧",
+          description: `Invoice ${invoice.id} has been sent to ${invoice.customerEmail}`,
+          duration: 5000,
+        });
+        return true;
+      } else {
+        throw new Error('Failed to send email');
+      }
+    } catch (error) {
+      console.error('Error sending invoice email:', error);
+      toast({
+        title: "Email Sending Failed",
+        description: error.response?.data?.error || error.message || "Failed to send invoice email. The invoice was created successfully.",
+        variant: "destructive",
+        duration: 8000,
+      });
+      return false;
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const onSubmit = async (data: CreateInvoiceForm) => {
     console.log('onSubmit called with data:', data);
     console.log('Form is valid:', form.formState.isValid);
@@ -135,11 +178,23 @@ export function CreateInvoiceForm() {
       console.log('Invoice created successfully:', newInvoice);
       console.log('Current invoices in localStorage:', localStorage.getItem('invoices'));
 
-      toast({
-        title: "Invoice Created Successfully! 🎉",
-        description: `Invoice ${newInvoice.id} has been created and saved.`,
-        duration: 5000,
-      });
+      // Send email notification
+      console.log('Attempting to send invoice email...');
+      const emailSent = await sendInvoiceEmail(newInvoice);
+      
+      if (emailSent) {
+        toast({
+          title: "Invoice Created & Sent Successfully! 🎉📧",
+          description: `Invoice ${newInvoice.id} has been created and emailed to ${newInvoice.customerEmail}`,
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Invoice Created Successfully! 🎉",
+          description: `Invoice ${newInvoice.id} has been created and saved. Email sending failed but the invoice is ready.`,
+          duration: 5000,
+        });
+      }
 
       // Navigate back to invoices list
       navigate('/invoices');
@@ -228,7 +283,7 @@ export function CreateInvoiceForm() {
                       <FormControl>
                         <Input 
                           placeholder="customer@example.com" 
-                          disabled={isLoading}
+                          disabled={isLoading || isSendingEmail}
                           {...field} 
                         />
                       </FormControl>
@@ -245,7 +300,7 @@ export function CreateInvoiceForm() {
                       <FormControl>
                         <Input 
                           placeholder="Acme Corp" 
-                          disabled={isLoading}
+                          disabled={isLoading || isSendingEmail}
                           {...field} 
                         />
                       </FormControl>
@@ -268,7 +323,7 @@ export function CreateInvoiceForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Currency Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || isSendingEmail}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
@@ -586,7 +641,7 @@ export function CreateInvoiceForm() {
             <Button 
               type="button" 
               variant="outline"
-              disabled={isLoading}
+              disabled={isLoading || isSendingEmail}
               onClick={saveDraft}
             >
               {isLoading ? (
@@ -605,12 +660,17 @@ export function CreateInvoiceForm() {
             <Button 
               type="submit" 
               variant="hero"
-              disabled={isLoading || subtotal === 0}
+              disabled={isLoading || isSendingEmail || subtotal === 0}
             >
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Creating Invoice...
+                </>
+              ) : isSendingEmail ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending Email...
                 </>
               ) : (
                 <>

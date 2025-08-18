@@ -5,6 +5,7 @@ import {
   depositForBurn,
   retrieveAttestation,
   receiveMessageMint,
+  sendInvoiceEmail,
 } from "./functions/index.js";
 import {
   USDC,
@@ -147,6 +148,44 @@ app.post("/cctp/mint", async (req, res) => {
   } catch (e) {
     console.error(`[CCTP][mint.build][error]`, e);
     return res.status(500).json({ error: e?.message || String(e), stage: "mint.build" });
+  }
+});
+
+// Email endpoint for sending invoice notifications
+app.post("/invoice/send-email", async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ error: "Request body is required" });
+    }
+    
+    const { invoice, baseUrl } = req.body;
+    
+    if (!invoice) {
+      return res.status(400).json({ error: "Invoice data is required" });
+    }
+    
+    if (!invoice.customerEmail) {
+      return res.status(400).json({ error: "Customer email is required" });
+    }
+    
+    console.log(`[EMAIL] Sending invoice email for ${invoice.id} to ${invoice.customerEmail}`);
+    
+    const result = await sendInvoiceEmail(invoice, baseUrl);
+    
+    console.log(`[EMAIL] Successfully sent invoice email for ${invoice.id}`);
+    
+    return res.json({
+      success: true,
+      message: "Invoice email sent successfully",
+      ...result
+    });
+    
+  } catch (error) {
+    console.error(`[EMAIL] Error sending invoice email:`, error);
+    return res.status(500).json({ 
+      error: error?.message || String(error), 
+      stage: "email.send" 
+    });
   }
 });
 
