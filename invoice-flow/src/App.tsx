@@ -15,6 +15,7 @@ import Settings from "./pages/Settings";
 import PayInvoice from "./pages/PayInvoice";
 import InvoicePaid from "./pages/InvoicePaid";
 import CustomerDashboard from "./pages/CustomerDashboard";
+import InvoiceDetails from "./pages/InvoiceDetails";
 import NotFound from "./pages/NotFound";
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -32,6 +33,7 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/invoices/new" element={<CreateInvoice />} />
+              <Route path="/invoices/:invoiceId" element={<InvoiceDetails />} />
               <Route path="/testcctp" element={<TestCctpPage />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/pay-invoice/:invoiceId" element={<PayInvoice />} />
