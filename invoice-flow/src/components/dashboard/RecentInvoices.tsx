@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowUpRight, Clock, CheckCircle, AlertCircle, Loader2, Plus, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useInvoices } from '@/hooks/use-invoices';
 import { format } from 'date-fns';
@@ -37,8 +37,8 @@ const statusConfig = {
 export function RecentInvoices() {
   const { invoices, isLoading } = useInvoices();
 
-  // Get the 3 most recent invoices
-  const recentInvoices = (invoices || []).slice(0, 3);
+  // Get the 5 most recent invoices (increased from 3 for better overview)
+  const recentInvoices = (invoices || []).slice(0, 5);
 
   if (isLoading) {
     return (
@@ -74,8 +74,20 @@ export function RecentInvoices() {
       </CardHeader>
       <CardContent>
         {recentInvoices.length === 0 ? (
-          <div className="text-center p-8 text-muted-foreground">
-            No invoices yet. Create your first invoice to get started!
+          <div className="text-center p-8">
+            <div className="text-muted-foreground mb-4">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p className="text-lg font-medium mb-2">No invoices yet</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Create your first invoice to start tracking payments and revenue
+              </p>
+            </div>
+            <Button asChild>
+              <Link to="/invoices/new">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Invoice
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -94,6 +106,11 @@ export function RecentInvoices() {
                       <div className="text-sm text-muted-foreground">
                         {invoice.id} • Due {format(new Date(invoice.dueDate), 'MMM dd, yyyy')}
                       </div>
+                      {invoice.currencyType === 'usdc' && invoice.recipientAddress && (
+                        <div className="text-xs text-muted-foreground">
+                          USDC • {invoice.recipientAddress.slice(0, 6)}...{invoice.recipientAddress.slice(-4)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="text-right flex items-center gap-3">
@@ -106,6 +123,11 @@ export function RecentInvoices() {
                           via {invoice.chain}
                         </div>
                       )}
+                      {invoice.status === 'paid' && invoice.paidAt && (
+                        <div className="text-xs text-success">
+                          Paid {format(new Date(invoice.paidAt), 'MMM dd')}
+                        </div>
+                      )}
                     </div>
                     <Badge variant={config.variant}>
                       {invoice.status}
@@ -114,6 +136,19 @@ export function RecentInvoices() {
                 </div>
               );
             })}
+            
+            {/* Show total summary if there are invoices */}
+            {recentInvoices.length > 0 && (
+              <div className="pt-4 border-t border-border">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Recent Total:</span>
+                  <span className="font-medium">
+                    {recentInvoices.reduce((sum, invoice) => sum + invoice.subtotal, 0).toFixed(2)} 
+                    {recentInvoices[0]?.currencyType === 'usdc' ? ' USDC' : ' USD'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

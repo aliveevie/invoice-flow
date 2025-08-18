@@ -161,6 +161,88 @@ export function useInvoices() {
     });
   };
 
+  // Dashboard utility functions
+  const getDashboardStats = () => {
+    if (!invoices || invoices.length === 0) {
+      return {
+        totalRevenue: 0,
+        totalInvoices: 0,
+        pendingAmount: 0,
+        settlementRate: 0,
+        paidInvoices: 0,
+        pendingInvoices: 0,
+        overdueInvoices: 0,
+        draftInvoices: 0,
+        cancelledInvoices: 0
+      };
+    }
+
+    const totalRevenue = invoices
+      .filter(invoice => invoice.status === 'paid')
+      .reduce((sum, invoice) => sum + invoice.subtotal, 0);
+    
+    const totalInvoices = invoices.length;
+    const paidInvoices = invoices.filter(invoice => invoice.status === 'paid').length;
+    const pendingInvoices = invoices.filter(invoice => invoice.status === 'issued').length;
+    const overdueInvoices = invoices.filter(invoice => invoice.status === 'overdue').length;
+    const draftInvoices = invoices.filter(invoice => invoice.status === 'draft').length;
+    const cancelledInvoices = invoices.filter(invoice => invoice.status === 'cancelled').length;
+    
+    const pendingAmount = invoices
+      .filter(invoice => invoice.status === 'issued' || invoice.status === 'overdue')
+      .reduce((sum, invoice) => sum + invoice.subtotal, 0);
+    
+    const settlementRate = totalInvoices > 0 ? (paidInvoices / totalInvoices) * 100 : 0;
+
+    return {
+      totalRevenue,
+      totalInvoices,
+      pendingAmount,
+      settlementRate,
+      paidInvoices,
+      pendingInvoices,
+      overdueInvoices,
+      draftInvoices,
+      cancelledInvoices
+    };
+  };
+
+  const getMonthlyStats = (months: number = 2) => {
+    if (!invoices || invoices.length === 0) {
+      return [];
+    }
+
+    const now = new Date();
+    const stats = [];
+
+    for (let i = 0; i < months; i++) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+      
+      const monthInvoices = invoices.filter(invoice => {
+        const invoiceDate = new Date(invoice.createdAt);
+        return invoiceDate >= monthStart && invoiceDate <= monthEnd;
+      });
+
+      const monthRevenue = monthInvoices
+        .filter(invoice => invoice.status === 'paid')
+        .reduce((sum, invoice) => sum + invoice.subtotal, 0);
+
+      const monthPaid = monthInvoices.filter(invoice => invoice.status === 'paid').length;
+      const monthTotal = monthInvoices.length;
+
+      stats.push({
+        month: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        revenue: monthRevenue,
+        invoices: monthTotal,
+        paid: monthPaid,
+        settlementRate: monthTotal > 0 ? (monthPaid / monthTotal) * 100 : 0
+      });
+    }
+
+    return stats.reverse();
+  };
+
   return {
     invoices,
     isLoading,
@@ -172,5 +254,7 @@ export function useInvoices() {
     getInvoicesByStatus,
     searchInvoices,
     filterInvoices,
+    getDashboardStats,
+    getMonthlyStats,
   };
 }
